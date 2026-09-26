@@ -54,6 +54,11 @@ app:
     business-account-id: ${WHATSAPP_BUSINESS_ACCOUNT_ID:}
     verify-token: ${WHATSAPP_VERIFY_TOKEN:}
     app-secret: ${WHATSAPP_APP_SECRET:}
+    openclaw:
+      enabled: ${WHATSAPP_OPENCLAW_ENABLED:false}
+      gateway-url: ${OPENCLAW_GATEWAY_URL:}
+      gateway-token: ${OPENCLAW_GATEWAY_TOKEN:}
+      max-media-bytes: ${OPENCLAW_WHATSAPP_MAX_MEDIA_BYTES:1250000}
   ai:
     mode: ${AI_EXTRACTION_MODE:mock}
     url: ${AI_EXTRACTION_URL:}
