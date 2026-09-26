@@ -2,7 +2,7 @@
 
 ## Render topology
 
-Use one always-on web service plus one Render PostgreSQL database in **Singapore** (closest supported Render region to India). The repository includes a multi-stage `Dockerfile` that:
+Production uses one web service plus one Render PostgreSQL database in **Singapore**. The repository includes a multi-stage `Dockerfile` that:
 
 1. builds React with Node 22,
 2. copies `frontend/dist` into Spring Boot static resources,
@@ -11,17 +11,32 @@ Use one always-on web service plus one Render PostgreSQL database in **Singapore
 
 Health check: `/actuator/health`.
 
-`render.yaml` describes the intended always-on production topology. A paid always-on web plan is required for reliable WhatsApp webhook delivery; a sleeping/free web service is suitable only for initial validation.
+The current `render.yaml` is intentionally configured for a **free validation web service** and references the existing Render database named `bombay-restaurant-intelligence-db`. It does not define a second database, so applying the Blueprint reuses the existing database and obtains host/port/database/user/password through Render-managed `fromDatabase` references. No database password belongs in GitHub or in this document.
+
+For production WhatsApp webhook reliability, upgrade the web service to an always-on paid plan after validation. The existing free Render Postgres instance is also suitable only for validation; select an appropriate persistent paid Postgres plan before relying on it for production records. Do not change plans until the account owner has explicitly approved the associated charges.
+
+## Initial Blueprint deployment
+
+1. In the Render Dashboard choose **New → Blueprint**.
+2. Select `treddy-sudo/bombay-restaurant-intelligence` and the `main` branch.
+3. Render will read the repository-root `render.yaml`.
+4. Confirm the existing database reference `bombay-restaurant-intelligence-db`.
+5. Enter a strong value for `APP_OWNER_PASSWORD` when Render prompts for the `sync: false` variable. The initial username is `owner` and can be changed later in the service environment settings.
+6. Apply the Blueprint.
+7. Wait for the Docker build and deploy to complete, then verify `/actuator/health` returns `UP`.
+8. Sign in to the dashboard with the owner credentials and perform the manual text smoke test `Paid Salman 6500 for vegetables`.
+
+The GitHub CI workflow independently builds the React production bundle, runs all Maven tests/package, scans for committed secrets, and builds the same multi-stage Docker image used by Render.
 
 ## Required environment variables
 
 ### Core
 
-- `DATABASE_HOST`
-- `DATABASE_PORT` (normally `5432`)
-- `DATABASE_NAME`
-- `DATABASE_USERNAME`
-- `DATABASE_PASSWORD`
+- `DATABASE_HOST` — supplied by Render from the existing database
+- `DATABASE_PORT` — supplied by Render from the existing database
+- `DATABASE_NAME` — supplied by Render from the existing database
+- `DATABASE_USERNAME` — supplied by Render from the existing database
+- `DATABASE_PASSWORD` — supplied by Render from the existing database
 - `APP_OWNER_USERNAME`
 - `APP_OWNER_PASSWORD`
 - `NORMALIZATION_AUTO_POST_THRESHOLD` (default `0.85`)
@@ -57,6 +72,8 @@ S3-compatible mode:
 - `S3_BUCKET`
 - `S3_ACCESS_KEY`
 - `S3_SECRET_KEY`
+
+Local Render filesystem storage should be treated as temporary. Configure S3-compatible storage before relying on uploaded source documents as durable production evidence.
 
 Never commit any real value from the secret variables above.
 
