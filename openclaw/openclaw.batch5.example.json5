@@ -1,0 +1,151 @@
+{
+  // Batch 5: replace the example group JID and E.164 sender numbers with the real management group/users.
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      rateLimit: {
+        maxAttempts: 10,
+        windowMs: 60000,
+        lockoutMs: 300000,
+        exemptLoopback: true,
+      },
+    },
+  },
+
+  session: {
+    dmScope: "per-channel-peer",
+    // WhatsApp groups remain isolated automatically under their own group session keys.
+  },
+
+  surfaces: {
+    whatsapp: {
+      silentReply: {
+        // Allows always-listening group data turns to end with exact NO_REPLY.
+        group: "allow",
+      },
+    },
+  },
+
+  channels: {
+    whatsapp: {
+      enabled: true,
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+      // Only these management senders can trigger the agent inside an admitted group.
+      groupAllowFrom: [
+        "+15551234567",
+        "+15557654321",
+      ],
+      // Presence of this map is also a group-membership allowlist. Do not use "*" in production.
+      groups: {
+        "1234567890-1234567890@g.us": {
+          // Always listen to every admitted message; the silent-reply policy prevents chatter for data.
+          requireMention: false,
+        },
+      },
+      historyLimit: 50,
+      textChunkLimit: 4000,
+      mediaMaxMb: 20,
+      sendReadReceipts: true,
+      replyToMode: "first",
+    },
+  },
+
+  messages: {
+    inbound: {
+      // Small quiet window for managers who send one business note in several text bubbles.
+      byChannel: { whatsapp: 1200 },
+    },
+  },
+
+  models: {
+    providers: {
+      ollama: {
+        baseUrl: "http://127.0.0.1:11434",
+        apiKey: "ollama-local",
+        api: "ollama",
+        timeoutSeconds: 180,
+        models: [
+          {
+            id: "qwen3.5:9b",
+            name: "qwen3.5:9b",
+            reasoning: true,
+            input: ["text", "image"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, thinking: false, keep_alive: "15m" },
+          },
+          {
+            id: "gemma4:12b",
+            name: "gemma4:12b",
+            reasoning: false,
+            input: ["text", "image"],
+            contextTokens: 32768,
+            params: { num_ctx: 32768, keep_alive: "15m" },
+          },
+          {
+            id: "qwen3.5:27b",
+            name: "qwen3.5:27b",
+            reasoning: true,
+            input: ["text"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, keep_alive: "15m" },
+          },
+        ],
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      workspace: "./openclaw/workspace",
+      model: { primary: "ollama/qwen3.5:9b" },
+      skills: [],
+    },
+  },
+
+  tools: {
+    allow: [
+      "restaurant_route_text",
+      "restaurant_ingest_text",
+      "restaurant_ingest_image",
+      "restaurant_preview_spreadsheet",
+      "restaurant_confirm_spreadsheet",
+      "restaurant_get_sales",
+    ],
+    deny: [
+      "group:automation",
+      "group:runtime",
+      "group:fs",
+      "sessions_spawn",
+      "sessions_send",
+    ],
+    fs: { workspaceOnly: true },
+    elevated: { enabled: false },
+    agentToAgent: { enabled: false },
+  },
+
+  plugins: {
+    entries: {
+      "bombay-restaurant-tools": {
+        enabled: true,
+        config: {
+          backendBaseUrl: "${OPENCLAW_BACKEND_BASE_URL}",
+          ollamaBaseUrl: "${OLLAMA_BASE_URL}",
+          routerModel: "qwen3.5:9b",
+          textModel: "qwen3.5:9b",
+          visionModel: "qwen3.5:9b",
+          visionFallback: "gemma4:12b",
+          responseModel: "qwen3.5:9b",
+          // Plugin-internal reads are restricted to these roots; no generic filesystem tool is enabled.
+          inboundMediaRoots: [
+            "~/.openclaw/media",
+            "~/.openclaw/workspace",
+          ],
+        },
+      },
+    },
+  },
+}

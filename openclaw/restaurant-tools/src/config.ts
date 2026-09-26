@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { delimiter, isAbsolute, resolve } from "node:path";
+
 export type RestaurantPluginConfig = {
   backendBaseUrl?: string;
   ollamaBaseUrl?: string;
@@ -6,6 +9,7 @@ export type RestaurantPluginConfig = {
   visionModel?: string;
   visionFallback?: string;
   responseModel?: string;
+  inboundMediaRoots?: string[];
 };
 
 export type RuntimeConfig = {
@@ -17,7 +21,31 @@ export type RuntimeConfig = {
   visionModel: string;
   visionFallback: string;
   responseModel: string;
+  inboundMediaRoots: string[];
 };
+
+function expandRoot(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  if (trimmed === "~") return homedir();
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+    return resolve(homedir(), trimmed.slice(2));
+  }
+  return isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed);
+}
+
+function resolveInboundMediaRoots(config: RestaurantPluginConfig): string[] {
+  const envRoots = (process.env.OPENCLAW_INBOUND_MEDIA_ROOTS ?? "")
+    .split(delimiter)
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const configured = envRoots.length > 0
+    ? envRoots
+    : (config.inboundMediaRoots?.length
+      ? config.inboundMediaRoots
+      : ["~/.openclaw/media", "~/.openclaw/workspace"]);
+  return [...new Set(configured.map(expandRoot).filter(Boolean))];
+}
 
 export function resolveRuntimeConfig(config: RestaurantPluginConfig): RuntimeConfig {
   const sharedSecret = (process.env.OPENCLAW_BACKEND_SHARED_SECRET ?? "").trim();
@@ -34,5 +62,6 @@ export function resolveRuntimeConfig(config: RestaurantPluginConfig): RuntimeCon
     visionModel: process.env.OLLAMA_VISION_MODEL ?? config.visionModel ?? "qwen3.5:9b",
     visionFallback: process.env.OLLAMA_VISION_FALLBACK ?? config.visionFallback ?? "gemma4:12b",
     responseModel: process.env.OLLAMA_RESPONSE_MODEL ?? config.responseModel ?? "qwen3.5:9b",
+    inboundMediaRoots: resolveInboundMediaRoots(config),
   };
 }

@@ -2,6 +2,7 @@ import { Type } from "typebox";
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import { SpringBackendClient } from "./backend.js";
 import { resolveRuntimeConfig, type RestaurantPluginConfig } from "./config.js";
+import { resolveAttachmentInput } from "./media.js";
 import { OllamaClient } from "./ollama.js";
 import { RestaurantRouter } from "./router.js";
 
@@ -13,6 +14,7 @@ const configSchema = Type.Object({
   visionModel: Type.Optional(Type.String()),
   visionFallback: Type.Optional(Type.String()),
   responseModel: Type.Optional(Type.String()),
+  inboundMediaRoots: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { minItems: 1 })),
 });
 
 function backendFor(config: RestaurantPluginConfig): SpringBackendClient {
@@ -109,20 +111,30 @@ export default defineToolPlugin({
     tool({
       name: "restaurant_ingest_image",
       label: "Ingest Restaurant Image",
-      description: "Extract strict candidate records from a receipt, handwritten sheet, sales summary, salary image, screenshot, or other restaurant image with Ollama vision, then send the image and candidates to Spring for validation, dedupe, storage, normalization, review, and accounting persistence.",
+      description: "Ingest a WhatsApp/OpenClaw staged image by exact AttachmentPath, or inline Base64 for tests/manual calls. The plugin reads only configured inbound-media roots, uses Ollama vision for strict candidates, then Spring validates, deduplicates, stores, normalizes, reviews, and persists them.",
       parameters: Type.Object({
-        imageBase64: Type.String({ minLength: 4 }),
+        imageBase64: Type.Optional(Type.String({ minLength: 4 })),
+        attachmentPath: Type.Optional(Type.String({ minLength: 1 })),
         contentType: imageContentType,
-        filename: Type.String({ minLength: 1, maxLength: 255 }),
+        filename: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
         sourceId: Type.String({ minLength: 1 }),
         sender: Type.Optional(Type.String()),
         sourceType: imageSourceType,
       }, { additionalProperties: false }),
-      async execute({ imageBase64, contentType, filename, sourceId, sender, sourceType }, config, context) {
+      async execute({ imageBase64, attachmentPath, contentType, filename, sourceId, sender, sourceType }, config, context) {
+        const runtime = resolveRuntimeConfig(config);
+        const input = await resolveAttachmentInput({
+          inlineBase64: imageBase64,
+          attachmentPath,
+          allowedRoots: runtime.inboundMediaRoots,
+          maxBytes: 10 * 1024 * 1024,
+        });
+        const resolvedFilename = filename?.trim() || input.stagedFilename;
+        if (!resolvedFilename) throw new Error("filename is required for inline image Base64");
         const result = await routerFor(config).ingestImage(
-          imageBase64,
+          input.base64,
           contentType,
-          filename,
+          resolvedFilename,
           sourceId,
           sender,
           sourceType ?? "IMAGE",
@@ -134,15 +146,25 @@ export default defineToolPlugin({
     tool({
       name: "restaurant_preview_spreadsheet",
       label: "Preview Restaurant Spreadsheet",
-      description: "Send a CSV/XLS/XLSX file directly to the signed Spring upload pipeline for deterministic parsing, checksum dedupe, stored column mappings, and preview. This tool does not send spreadsheet contents to Ollama.",
+      description: "Preview a WhatsApp/OpenClaw staged CSV/XLS/XLSX by exact AttachmentPath, or inline Base64 for tests/manual calls. The plugin reads only configured inbound-media roots and sends bytes directly to Spring's deterministic parser; spreadsheet contents are never sent to Ollama.",
       parameters: Type.Object({
-        fileBase64: Type.String({ minLength: 4 }),
+        fileBase64: Type.Optional(Type.String({ minLength: 4 })),
+        attachmentPath: Type.Optional(Type.String({ minLength: 1 })),
         contentType: spreadsheetContentType,
-        filename: Type.String({ minLength: 1, maxLength: 255 }),
+        filename: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
       }, { additionalProperties: false }),
-      async execute({ fileBase64, contentType, filename }, config, context) {
+      async execute({ fileBase64, attachmentPath, contentType, filename }, config, context) {
+        const runtime = resolveRuntimeConfig(config);
+        const input = await resolveAttachmentInput({
+          inlineBase64: fileBase64,
+          attachmentPath,
+          allowedRoots: runtime.inboundMediaRoots,
+          maxBytes: 10 * 1024 * 1024,
+        });
+        const resolvedFilename = filename?.trim() || input.stagedFilename;
+        if (!resolvedFilename) throw new Error("filename is required for inline spreadsheet Base64");
         const preview = await backendFor(config).previewSpreadsheet(
-          { fileBase64, contentType, filename },
+          { fileBase64: input.base64, contentType, filename: resolvedFilename },
           context.signal,
         );
         return { ok: true, preview };
