@@ -1,11 +1,13 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 
-export type SourceType = "MANUAL_TEXT" | "WHATSAPP_TEXT";
+export type TextSourceType = "MANUAL_TEXT" | "WHATSAPP_TEXT";
+export type ImageSourceType = "IMAGE" | "WHATSAPP_IMAGE";
+export type SourceType = TextSourceType | ImageSourceType;
 
 export type TextCandidate = {
   sourceId: string;
   sender?: string;
-  sourceType: SourceType;
+  sourceType: TextSourceType;
   businessDate?: string;
   rawText: string;
   transactionType?: string;
@@ -16,6 +18,31 @@ export type TextCandidate = {
   description?: string;
   context?: string;
   confidence: number;
+};
+
+export type ImageCandidateRecord = {
+  businessDate?: string;
+  rawText?: string;
+  transactionType?: string;
+  category?: string;
+  vendor?: string;
+  employee?: string;
+  amount?: string;
+  description?: string;
+  context?: string;
+  confidence: number;
+};
+
+export type ImageCandidateRequest = {
+  sourceId: string;
+  sender?: string;
+  sourceType: ImageSourceType;
+  filename: string;
+  contentType: "image/jpeg" | "image/png" | "image/webp";
+  imageBase64: string;
+  fileChecksum: string;
+  documentType: string;
+  records: ImageCandidateRecord[];
 };
 
 export type NormalizationResult = {
@@ -29,6 +56,13 @@ export type NormalizationResult = {
   currency: string;
   businessDate: string;
   message: string;
+};
+
+export type ImageIngestionResponse = {
+  checksum: string;
+  documentType?: string | null;
+  processed: number;
+  results: NormalizationResult[];
 };
 
 export type AnalyticsAnswer = {
@@ -51,6 +85,10 @@ export class SpringBackendClient {
 
   ingestTextCandidate(candidate: TextCandidate, signal?: AbortSignal): Promise<NormalizationResult> {
     return this.request("POST", "/api/internal/v1/intake/text-candidate", candidate, signal);
+  }
+
+  ingestImageCandidates(candidate: ImageCandidateRequest, signal?: AbortSignal): Promise<ImageIngestionResponse> {
+    return this.request("POST", "/api/internal/v1/intake/image-candidates", candidate, signal);
   }
 
   queryTodaySales(signal?: AbortSignal): Promise<AnalyticsAnswer> {
