@@ -1,0 +1,7 @@
+package com.bombay.restaurantintelligence.domain;
+import jakarta.persistence.*; import java.time.Instant; import java.util.UUID;
+@Entity @Table(name="ingestion_jobs") public class IngestionJob {
+ @Id @GeneratedValue(strategy=GenerationType.UUID) private UUID id; @Column(name="source_type",nullable=false) private String sourceType; @Column(name="source_reference") private String sourceReference; @Column(nullable=false) private String status; private String checksum; @Column(name="payload_json",columnDefinition="TEXT") private String payloadJson; @Column(name="record_count",nullable=false) private int recordCount; @Column(name="created_at",nullable=false) private Instant createdAt=Instant.now(); @Column(name="updated_at",nullable=false) private Instant updatedAt=Instant.now();
+ protected IngestionJob(){} public IngestionJob(String sourceType,String ref,String status,String checksum,String payload,int count){this.sourceType=sourceType;this.sourceReference=ref;this.status=status;this.checksum=checksum;this.payloadJson=payload;this.recordCount=count;}
+ public UUID getId(){return id;} public String getSourceType(){return sourceType;} public String getSourceReference(){return sourceReference;} public String getStatus(){return status;} public String getPayloadJson(){return payloadJson;} public String getChecksum(){return checksum;} public int getRecordCount(){return recordCount;} public Instant getCreatedAt(){return createdAt;} public void markImported(){this.status="IMPORTED";this.updatedAt=Instant.now();}
+}

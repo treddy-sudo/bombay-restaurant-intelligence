@@ -1,0 +1,6 @@
+package com.bombay.restaurantintelligence.domain;
+import jakarta.persistence.*; import java.time.Instant; import java.util.UUID;
+@Entity @Table(name="audit_logs") public class AuditLog {
+ @Id @GeneratedValue(strategy=GenerationType.UUID) private UUID id; @Column(name="entity_type",nullable=false) private String entityType; @Column(name="entity_id",nullable=false) private UUID entityId; @Column(name="old_value",columnDefinition="TEXT") private String oldValue; @Column(name="new_value",columnDefinition="TEXT") private String newValue; @Column(name="changed_by",nullable=false) private String changedBy; @Column(name="changed_at",nullable=false) private Instant changedAt=Instant.now(); @Column(columnDefinition="TEXT") private String reason;
+ public UUID getId(){return id;} public String getEntityType(){return entityType;} public UUID getEntityId(){return entityId;} public String getOldValue(){return oldValue;} public String getNewValue(){return newValue;} public String getChangedBy(){return changedBy;} public Instant getChangedAt(){return changedAt;} public String getReason(){return reason;} protected AuditLog(){} public AuditLog(String type,UUID entityId,String oldVal,String newVal,String changedBy,String reason){this.entityType=type;this.entityId=entityId;this.oldValue=oldVal;this.newValue=newVal;this.changedBy=changedBy;this.reason=reason;}
+}
