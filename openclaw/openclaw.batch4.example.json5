@@ -1,0 +1,87 @@
+{
+  // Batch 4: Meta WhatsApp Cloud API remains at Spring. Spring invokes only these restaurant tools through OpenClaw Gateway.
+  gateway: {
+    mode: "local",
+    port: 18789,
+    bind: "loopback",
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      rateLimit: {
+        maxAttempts: 10,
+        windowMs: 60000,
+        lockoutMs: 300000,
+        exemptLoopback: true,
+      },
+    },
+  },
+  models: {
+    providers: {
+      ollama: {
+        baseUrl: "http://127.0.0.1:11434",
+        apiKey: "ollama-local",
+        api: "ollama",
+        timeoutSeconds: 180,
+        models: [
+          {
+            id: "qwen3.5:9b",
+            name: "qwen3.5:9b",
+            reasoning: true,
+            input: ["text", "image"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, thinking: false, keep_alive: "15m" },
+          },
+          {
+            id: "gemma4:12b",
+            name: "gemma4:12b",
+            reasoning: false,
+            input: ["text", "image"],
+            contextTokens: 32768,
+            params: { num_ctx: 32768, keep_alive: "15m" },
+          },
+          {
+            id: "qwen3.5:27b",
+            name: "qwen3.5:27b",
+            reasoning: true,
+            input: ["text"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, keep_alive: "15m" },
+          },
+        ],
+      },
+    },
+  },
+  agents: {
+    defaults: {
+      workspace: "./openclaw/workspace",
+      model: { primary: "ollama/qwen3.5:9b" },
+    },
+  },
+  tools: {
+    // /tools/invoke is filtered through normal tool policy. Keep this Gateway dedicated to the restaurant surface.
+    allow: [
+      "restaurant_route_text",
+      "restaurant_ingest_text",
+      "restaurant_ingest_image",
+      "restaurant_preview_spreadsheet",
+      "restaurant_confirm_spreadsheet",
+      "restaurant_get_sales",
+    ],
+  },
+  plugins: {
+    entries: {
+      "bombay-restaurant-tools": {
+        enabled: true,
+        config: {
+          backendBaseUrl: "${OPENCLAW_BACKEND_BASE_URL}",
+          ollamaBaseUrl: "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}",
+          routerModel: "${OLLAMA_ROUTER_MODEL:-qwen3.5:9b}",
+          textModel: "${OLLAMA_TEXT_MODEL:-qwen3.5:9b}",
+          visionModel: "${OLLAMA_VISION_MODEL:-qwen3.5:9b}",
+          visionFallback: "${OLLAMA_VISION_FALLBACK:-gemma4:12b}",
+          responseModel: "${OLLAMA_RESPONSE_MODEL:-qwen3.5:9b}",
+        },
+      },
+    },
+  },
+}
