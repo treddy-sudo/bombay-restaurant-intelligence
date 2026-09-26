@@ -42,7 +42,11 @@ class SecurityConfigTest {
     }
 
     @Test
-    void validBasicCredentialsStillAuthenticate() throws Exception {
+    void validBasicCredentialsRemainValidAcrossRequests() throws Exception {
+        mockMvc.perform(get("/api/auth/check").with(httpBasic("owner", "test-password")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.authenticated").value(true));
+
         mockMvc.perform(get("/api/auth/check").with(httpBasic("owner", "test-password")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.authenticated").value(true));

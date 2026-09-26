@@ -7,7 +7,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -26,16 +25,17 @@ public class SecurityConfig {
     UserDetailsService users(@Value("${app.owner.username}") String username,
                              @Value("${app.owner.password}") String password,
                              PasswordEncoder encoder) {
-        UserDetails owner = User.withUsername(username)
-                .password(encoder.encode(password))
-                .roles("OWNER")
-                .build();
+        String encodedPassword = encoder.encode(password);
 
         return requestedUsername -> {
-            if (!owner.getUsername().equals(requestedUsername)) {
+            if (!username.equals(requestedUsername)) {
                 throw new UsernameNotFoundException("User not found");
             }
-            return owner;
+
+            return User.withUsername(username)
+                    .password(encodedPassword)
+                    .roles("OWNER")
+                    .build();
         };
     }
 
