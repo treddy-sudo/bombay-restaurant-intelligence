@@ -1,0 +1,144 @@
+{
+  // Batch 6 production-hardening template. Replace example group JIDs/numbers only on the OpenClaw host.
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      rateLimit: {
+        maxAttempts: 10,
+        windowMs: 60000,
+        lockoutMs: 300000,
+        exemptLoopback: true,
+      },
+    },
+  },
+
+  session: {
+    dmScope: "per-channel-peer",
+  },
+
+  surfaces: {
+    whatsapp: {
+      silentReply: { group: "allow" },
+    },
+  },
+
+  channels: {
+    whatsapp: {
+      enabled: true,
+      dmPolicy: "pairing",
+      groupPolicy: "allowlist",
+      groupAllowFrom: [
+        "+15551234567",
+        "+15557654321",
+      ],
+      groups: {
+        "1234567890-1234567890@g.us": { requireMention: false },
+      },
+      historyLimit: 50,
+      textChunkLimit: 4000,
+      mediaMaxMb: 20,
+      sendReadReceipts: true,
+      replyToMode: "first",
+    },
+  },
+
+  messages: {
+    inbound: { byChannel: { whatsapp: 1200 } },
+  },
+
+  models: {
+    providers: {
+      ollama: {
+        baseUrl: "http://127.0.0.1:11434",
+        apiKey: "ollama-local",
+        api: "ollama",
+        timeoutSeconds: 180,
+        models: [
+          {
+            id: "qwen3.5:9b",
+            name: "qwen3.5:9b",
+            reasoning: true,
+            input: ["text", "image"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, thinking: false, keep_alive: "15m" },
+          },
+          {
+            id: "gemma4:12b",
+            name: "gemma4:12b",
+            reasoning: false,
+            input: ["text", "image"],
+            contextTokens: 32768,
+            params: { num_ctx: 32768, keep_alive: "15m" },
+          },
+          {
+            id: "qwen3.5:27b",
+            name: "qwen3.5:27b",
+            reasoning: true,
+            input: ["text"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, keep_alive: "15m" },
+          },
+        ],
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      workspace: "./openclaw/workspace",
+      model: { primary: "ollama/qwen3.5:9b" },
+      skills: [],
+    },
+  },
+
+  tools: {
+    allow: [
+      "restaurant_route_text",
+      "restaurant_ingest_text",
+      "restaurant_ingest_image",
+      "restaurant_preview_spreadsheet",
+      "restaurant_confirm_spreadsheet",
+      "restaurant_get_sales",
+      "restaurant_health",
+    ],
+    deny: [
+      "group:automation",
+      "group:runtime",
+      "group:fs",
+      "sessions_spawn",
+      "sessions_send",
+    ],
+    fs: { workspaceOnly: true },
+    elevated: { enabled: false },
+    agentToAgent: { enabled: false },
+  },
+
+  plugins: {
+    entries: {
+      "bombay-restaurant-tools": {
+        enabled: true,
+        config: {
+          backendBaseUrl: "${OPENCLAW_BACKEND_BASE_URL}",
+          ollamaBaseUrl: "${OLLAMA_BASE_URL}",
+          routerModel: "qwen3.5:9b",
+          textModel: "qwen3.5:9b",
+          visionModel: "qwen3.5:9b",
+          visionFallback: "gemma4:12b",
+          reasoningModel: "qwen3.5:27b",
+          responseModel: "qwen3.5:9b",
+          inboundMediaRoots: [
+            "~/.openclaw/media",
+            "~/.openclaw/workspace",
+          ],
+          backendTimeoutMs: 15000,
+          backendReadRetries: 1,
+          ollamaTimeoutMs: 120000,
+          ollamaMaxRetries: 1,
+        },
+      },
+    },
+  },
+}

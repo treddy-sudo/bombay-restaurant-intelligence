@@ -52,7 +52,8 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain security(HttpSecurity http,
                                  AuthenticationEntryPoint restAuthenticationEntryPoint,
-                                 @Value("${app.internal-api.secret:}") String internalApiSecret) throws Exception {
+                                 @Value("${app.internal-api.secret:}") String internalApiSecret,
+                                 @Value("${app.internal-api.max-requests-per-minute:120}") int internalApiRateLimit) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(a -> a
@@ -61,7 +62,7 @@ public class SecurityConfig {
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(restAuthenticationEntryPoint))
                 .httpBasic(basic -> basic.authenticationEntryPoint(restAuthenticationEntryPoint))
-                .addFilterBefore(new InternalApiAuthenticationFilter(internalApiSecret), BasicAuthenticationFilter.class)
+                .addFilterBefore(new InternalApiAuthenticationFilter(internalApiSecret, internalApiRateLimit), BasicAuthenticationFilter.class)
                 .build();
     }
 }

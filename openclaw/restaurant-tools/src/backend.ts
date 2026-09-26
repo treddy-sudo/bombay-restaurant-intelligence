@@ -1,4 +1,6 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { RETRYABLE_HTTP_STATUSES, retryDelay, withTimeout } from "./http.js";
+import { defaultStructuredLogSink, errorType, type StructuredLogSink } from "./observability.js";
 
 export type TextSourceType = "MANUAL_TEXT" | "WHATSAPP_TEXT";
 export type ImageSourceType = "IMAGE" | "WHATSAPP_IMAGE";
@@ -113,14 +115,35 @@ export type AnalyticsAnswer = {
   currency: "INR";
 };
 
+export type SpringReadiness = {
+  status: "UP" | "DOWN";
+  timestamp: string;
+  components: Record<string, { status: "UP" | "DOWN"; errorType?: string | null }>;
+};
+
 export type FetchLike = typeof fetch;
 
+export type BackendClientOptions = {
+  timeoutMs?: number;
+  readRetries?: number;
+  log?: StructuredLogSink;
+};
+
 export class SpringBackendClient {
+  private readonly timeoutMs: number;
+  private readonly readRetries: number;
+  private readonly log: StructuredLogSink;
+
   constructor(
     private readonly baseUrl: string,
     private readonly sharedSecret: string,
     private readonly fetchFn: FetchLike = fetch,
-  ) {}
+    options: BackendClientOptions = {},
+  ) {
+    this.timeoutMs = options.timeoutMs ?? 15_000;
+    this.readRetries = options.readRetries ?? 1;
+    this.log = options.log ?? defaultStructuredLogSink;
+  }
 
   ingestTextCandidate(candidate: TextCandidate, signal?: AbortSignal): Promise<NormalizationResult> {
     return this.request("POST", "/api/internal/v1/intake/text-candidate", candidate, signal);
@@ -142,36 +165,79 @@ export class SpringBackendClient {
     return this.request("GET", "/api/internal/v1/analytics/query?intent=TODAY_SALES", undefined, signal);
   }
 
-  private async request<T>(method: string, path: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  health(signal?: AbortSignal): Promise<SpringReadiness> {
+    return this.request("GET", "/api/internal/v1/health", undefined, signal);
+  }
+
+  private async request<T>(method: string, path: string, body: unknown, callerSignal?: AbortSignal): Promise<T> {
     if (!this.sharedSecret) throw new Error("Backend shared secret is not configured");
 
-    const url = new URL(path, this.baseUrl);
-    const bodyText = body === undefined ? "" : JSON.stringify(body);
-    const timestamp = Math.floor(Date.now() / 1000).toString();
-    const requestId = randomUUID();
-    const bodyHash = createHash("sha256").update(bodyText).digest("hex");
-    const canonicalPath = `${url.pathname}${url.search}`;
-    const canonical = [timestamp, requestId, method, canonicalPath, bodyHash].join("\n");
-    const signature = `sha256=${createHmac("sha256", this.sharedSecret).update(canonical).digest("hex")}`;
+    const maxAttempts = method === "GET" ? this.readRetries + 1 : 1;
+    let lastError: unknown;
 
-    const headers: Record<string, string> = {
-      "X-Restaurant-Timestamp": timestamp,
-      "X-Restaurant-Request-Id": requestId,
-      "X-Restaurant-Signature": signature,
-    };
-    if (body !== undefined) headers["Content-Type"] = "application/json";
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const url = new URL(path, this.baseUrl);
+      const bodyText = body === undefined ? "" : JSON.stringify(body);
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const requestId = randomUUID();
+      const bodyHash = createHash("sha256").update(bodyText).digest("hex");
+      const canonicalPath = `${url.pathname}${url.search}`;
+      const canonical = [timestamp, requestId, method, canonicalPath, bodyHash].join("\n");
+      const signature = `sha256=${createHmac("sha256", this.sharedSecret).update(canonical).digest("hex")}`;
+      const started = Date.now();
 
-    const response = await this.fetchFn(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : bodyText,
-      signal,
-    });
+      const headers: Record<string, string> = {
+        "X-Restaurant-Timestamp": timestamp,
+        "X-Restaurant-Request-Id": requestId,
+        "X-Restaurant-Signature": signature,
+      };
+      if (body !== undefined) headers["Content-Type"] = "application/json";
 
-    const text = await response.text();
-    if (!response.ok) {
-      throw new Error(`Spring backend request failed (${response.status}): ${text.slice(0, 300)}`);
+      try {
+        const response = await withTimeout(this.timeoutMs, callerSignal, (signal) => this.fetchFn(url, {
+          method,
+          headers,
+          body: body === undefined ? undefined : bodyText,
+          signal,
+        }));
+        const text = await response.text();
+
+        this.log({
+          component: "spring-backend",
+          requestId,
+          backendEndpoint: canonicalPath,
+          processingStatus: response.ok ? "SUCCESS" : "HTTP_ERROR",
+          errorType: response.ok ? undefined : `HTTP_${response.status}`,
+          latencyMs: Date.now() - started,
+          attempt,
+        });
+
+        if (!response.ok) {
+          const error = new Error(`Spring backend request failed (${response.status}): ${text.slice(0, 300)}`);
+          if (method === "GET" && RETRYABLE_HTTP_STATUSES.has(response.status) && attempt < maxAttempts) {
+            lastError = error;
+            await retryDelay(attempt);
+            continue;
+          }
+          throw error;
+        }
+        return JSON.parse(text) as T;
+      } catch (error) {
+        lastError = error;
+        this.log({
+          component: "spring-backend",
+          requestId,
+          backendEndpoint: canonicalPath,
+          processingStatus: "ERROR",
+          errorType: errorType(error),
+          latencyMs: Date.now() - started,
+          attempt,
+        });
+        if (callerSignal?.aborted || method !== "GET" || attempt >= maxAttempts) throw error;
+        await retryDelay(attempt);
+      }
     }
-    return JSON.parse(text) as T;
+
+    throw lastError instanceof Error ? lastError : new Error("Spring backend request failed");
   }
 }

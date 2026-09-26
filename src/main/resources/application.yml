@@ -36,6 +36,7 @@ app:
     password: ${APP_OWNER_PASSWORD}
   internal-api:
     secret: ${OPENCLAW_BACKEND_SHARED_SECRET:}
+    max-requests-per-minute: ${OPENCLAW_BACKEND_MAX_REQUESTS_PER_MINUTE:120}
   normalization:
     auto-post-threshold: ${NORMALIZATION_AUTO_POST_THRESHOLD:0.85}
   storage:
