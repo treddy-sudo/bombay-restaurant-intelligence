@@ -31,7 +31,7 @@ public record OpenClawImageCandidateRequest(
             String category,
             String vendor,
             String employee,
-            @NotBlank String amount,
+            String amount,
             String description,
             String context,
             @NotNull @DecimalMin("0.0") @DecimalMax("1.0") BigDecimal confidence) {}
