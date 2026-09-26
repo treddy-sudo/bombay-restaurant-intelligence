@@ -154,7 +154,7 @@ public class UploadIngestionService {
         return (type != null && type.startsWith("image/")) || lower.matches(".*\\.(png|jpg|jpeg|webp)$");
     }
 
-    static String storageContentType(String filename, String contentType) {
+    public static String storageContentType(String filename, String contentType) {
         if (contentType != null && !contentType.isBlank() && !"application/octet-stream".equalsIgnoreCase(contentType)) {
             return contentType.trim().toLowerCase(Locale.ROOT);
         }
