@@ -45,6 +45,38 @@ describe("OllamaClient vision structured output", () => {
     expect(fetchFn).toHaveBeenCalledOnce();
   });
 
+  it("sends bearer auth to Ollama cloud chat and model-list requests", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("Authorization")).toBe("Bearer test-cloud-key");
+      const url = String(input);
+      if (url.endsWith("/api/tags")) {
+        return new Response(JSON.stringify({ models: [{ name: "gemma4:cloud", model: "gemma4:cloud" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      expect(headers.get("Content-Type")).toBe("application/json");
+      return new Response(JSON.stringify({ message: { content: JSON.stringify({ intent: "DATA_TEXT" }) } }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as unknown as typeof fetch;
+
+    const client = new OllamaClient("https://ollama.com", fetchFn, { apiKey: "test-cloud-key" });
+    const result = await client.structured<{ intent: string }>(
+      "gemma4:cloud",
+      "system",
+      "user",
+      { type: "object" },
+    );
+    const models = await client.listModels();
+
+    expect(result.intent).toBe("DATA_TEXT");
+    expect(models).toEqual(["gemma4:cloud"]);
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects malformed structured model output", async () => {
     const fetchFn = vi.fn(async () => new Response(JSON.stringify({
       message: { content: "not-json" },
