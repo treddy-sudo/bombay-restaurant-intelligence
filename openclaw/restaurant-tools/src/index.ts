@@ -15,10 +15,15 @@ const configSchema = Type.Object({
   responseModel: Type.Optional(Type.String()),
 });
 
+function backendFor(config: RestaurantPluginConfig): SpringBackendClient {
+  const runtime = resolveRuntimeConfig(config);
+  return new SpringBackendClient(runtime.backendBaseUrl, runtime.sharedSecret);
+}
+
 function routerFor(config: RestaurantPluginConfig): RestaurantRouter {
   const runtime = resolveRuntimeConfig(config);
   return new RestaurantRouter(
-    new SpringBackendClient(runtime.backendBaseUrl, runtime.sharedSecret),
+    backendFor(config),
     new OllamaClient(runtime.ollamaBaseUrl),
     {
       router: runtime.routerModel,
@@ -44,6 +49,13 @@ const imageContentType = Type.Union([
   Type.Literal("image/jpeg"),
   Type.Literal("image/png"),
   Type.Literal("image/webp"),
+]);
+
+const spreadsheetContentType = Type.Union([
+  Type.Literal("text/csv"),
+  Type.Literal("application/csv"),
+  Type.Literal("application/vnd.ms-excel"),
+  Type.Literal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
 ]);
 
 export default defineToolPlugin({
@@ -117,6 +129,35 @@ export default defineToolPlugin({
           context.signal,
         );
         return { ok: true, result };
+      },
+    }),
+    tool({
+      name: "restaurant_preview_spreadsheet",
+      label: "Preview Restaurant Spreadsheet",
+      description: "Send a CSV/XLS/XLSX file directly to the signed Spring upload pipeline for deterministic parsing, checksum dedupe, stored column mappings, and preview. This tool does not send spreadsheet contents to Ollama.",
+      parameters: Type.Object({
+        fileBase64: Type.String({ minLength: 4 }),
+        contentType: spreadsheetContentType,
+        filename: Type.String({ minLength: 1, maxLength: 255 }),
+      }, { additionalProperties: false }),
+      async execute({ fileBase64, contentType, filename }, config, context) {
+        const preview = await backendFor(config).previewSpreadsheet(
+          { fileBase64, contentType, filename },
+          context.signal,
+        );
+        return { ok: true, preview };
+      },
+    }),
+    tool({
+      name: "restaurant_confirm_spreadsheet",
+      label: "Confirm Restaurant Spreadsheet",
+      description: "Confirm a previously previewed spreadsheet job in Spring so every parsed row passes through IntakeAgent and NormalizationAgent before persistence. This tool does not use Ollama.",
+      parameters: Type.Object({
+        jobId: Type.String({ minLength: 1 }),
+      }, { additionalProperties: false }),
+      async execute({ jobId }, config, context) {
+        const confirmation = await backendFor(config).confirmSpreadsheet(jobId, context.signal);
+        return { ok: true, confirmation };
       },
     }),
     tool({

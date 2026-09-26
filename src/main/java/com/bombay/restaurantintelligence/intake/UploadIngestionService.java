@@ -55,26 +55,43 @@ public class UploadIngestionService {
     @Transactional
     public PreviewResponse preview(MultipartFile file) {
         try {
-            byte[] bytes = file.getBytes();
+            return previewBytes(
+                    Objects.requireNonNullElse(file.getOriginalFilename(), "upload"),
+                    file.getContentType(),
+                    file.getBytes());
+        } catch (DuplicateSourceException | IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalStateException("Upload preview failed", e);
+        }
+    }
+
+    @Transactional
+    public PreviewResponse previewBytes(String filename, String contentType, byte[] bytes) {
+        try {
+            if (bytes == null || bytes.length == 0) {
+                throw new IllegalArgumentException("Upload is empty");
+            }
+
+            String safeFilename = Objects.requireNonNullElse(filename, "upload");
             String checksum = sha256(bytes);
             if (jobs.existsByChecksum(checksum) || documents.existsByFileChecksum(checksum)) {
                 throw new DuplicateSourceException("This file has already been uploaded");
             }
 
-            String filename = Objects.requireNonNullElse(file.getOriginalFilename(), "upload");
-            String location = storage.store(filename, bytes);
-            String lower = filename.toLowerCase(Locale.ROOT);
+            String location = storage.store(safeFilename, bytes);
+            String lower = safeFilename.toLowerCase(Locale.ROOT);
             List<IntermediateBusinessRecord> records;
 
             if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) {
-                records = excel.extract(bytes, filename, checksum, location);
+                records = excel.extract(bytes, safeFilename, checksum, location);
             } else if (lower.endsWith(".csv")) {
-                records = csv.extract(bytes, filename, checksum, location);
-            } else if (isImage(file.getContentType(), lower)) {
+                records = csv.extract(bytes, safeFilename, checksum, location);
+            } else if (isImage(contentType, lower)) {
                 records = images.extract(
                         bytes,
-                        file.getContentType(),
-                        filename,
+                        contentType,
+                        safeFilename,
                         checksum,
                         null,
                         SourceType.IMAGE,
@@ -87,12 +104,12 @@ public class UploadIngestionService {
             String json = mapper.writeValueAsString(records);
             IngestionJob job = jobs.save(new IngestionJob(
                     records.isEmpty() ? "UPLOAD" : records.getFirst().sourceType().name(),
-                    filename,
+                    safeFilename,
                     "PREVIEW",
                     checksum,
                     json,
                     records.size()));
-            return new PreviewResponse(job.getId(), filename, checksum, records.size(), records);
+            return new PreviewResponse(job.getId(), safeFilename, checksum, records.size(), records);
         } catch (DuplicateSourceException | IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
