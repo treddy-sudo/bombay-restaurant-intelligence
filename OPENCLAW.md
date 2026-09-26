@@ -7,6 +7,7 @@ Bombay Restaurant Intelligence keeps Spring Boot/PostgreSQL as the accounting au
 ```text
 WhatsApp
   -> OpenClaw Gateway / WhatsApp channel
+  -> deterministic group/sender admission
   -> restaurant tool allowlist
   -> Ollama only where understanding is required
   -> HMAC-signed Spring internal API
@@ -43,30 +44,29 @@ Ollama never writes PostgreSQL, marks records verified, calculates official tota
 
 ## Batch 4 — OpenClaw-native WhatsApp DM
 
-Batch 4 makes OpenClaw the WhatsApp DM edge. The Gateway owns the linked WhatsApp Web/Baileys session and reconnect loop. Spring's existing Meta webhook remains available as legacy/fallback code but is not part of the OpenClaw production path.
+OpenClaw owns the linked WhatsApp session and reconnect loop. Spring's existing Meta webhook remains available as legacy/fallback code but is not part of the OpenClaw production path.
 
-```text
-Dedicated WhatsApp account
-  -> OpenClaw WhatsApp channel
-  -> DM pairing / sender admission
-  -> isolated sender session
-  -> restaurant tools only
-  -> signed Spring internal API
-  -> PostgreSQL / verified analytics
-```
+The DM configuration uses pairing, `session.dmScope="per-channel-peer"`, loopback Gateway binding with token authentication, restaurant-only tools, and no generic shell/database/browser/filesystem mutation authority.
 
-The Batch 4 config intentionally sets:
+Ordinary accepted DMs may require a visible channel response; keep any unavoidable ingestion acknowledgement minimal. Deterministic silent success behavior is implemented for the management group in Batch 5.
 
-- `channels.whatsapp.enabled=true`;
-- `dmPolicy="pairing"` so unknown senders are not processed until approved;
-- `groupPolicy="disabled"` because groups are Batch 5;
-- `session.dmScope="per-channel-peer"` so different managers never share DM context;
-- Gateway bind to loopback with token authentication;
-- an allowlist containing only the six restaurant tools;
-- runtime/filesystem/automation/subagent authority denied;
-- elevated tools and agent-to-agent access disabled.
+## Batch 5 — allowlisted management group
 
-### Restaurant tool surface
+The production group policy is deterministic and evaluated before the agent:
+
+- `groupPolicy="allowlist"`;
+- exact management-group JID allowlist;
+- exact manager sender allowlist;
+- `requireMention=false` for the configured management group;
+- per-channel/per-peer session isolation;
+- successful VERIFIED data ingestion returns `NO_REPLY` in the management group;
+- review/error/duplicate outcomes may return one concise notice;
+- approved dashboard questions return only backend-backed values;
+- unauthorized groups and senders never reach restaurant tools.
+
+Real group JIDs and manager numbers are operator-local configuration and must not be committed to Git.
+
+## Restaurant tool surface
 
 - `restaurant_route_text`
 - `restaurant_ingest_text`
@@ -74,10 +74,11 @@ The Batch 4 config intentionally sets:
 - `restaurant_preview_spreadsheet`
 - `restaurant_confirm_spreadsheet`
 - `restaurant_get_sales`
+- `restaurant_health`
 
 No shell, direct database, browser, unrestricted filesystem, automation, or generic HTTP tool is required by the restaurant agent.
 
-### DM behavior
+## Data paths
 
 Text data:
 
@@ -108,25 +109,11 @@ WhatsApp question -> restaurant_route_text -> approved intent only
 -> Spring analytics -> VERIFIED records -> Java calculation -> formatted reply
 ```
 
-The agent workspace policy in `openclaw/workspace/AGENTS.md` explicitly prohibits arithmetic from chat history, direct database writes, model-controlled verification, unsupported business conclusions, and instructions embedded in untrusted attachments.
-
-### Important Batch 4 silence limitation
-
-OpenClaw treats ordinary accepted direct-message turns as reply-required. The `NO_REPLY` token is suppressed at delivery, but it does not waive the host's required-reply obligation for an admitted DM. Therefore Batch 4 does not claim guaranteed silent DM ingestion. Keep unavoidable ingestion acknowledgements minimal.
-
-The required `DATA IN -> PROCESS SILENTLY` behavior is completed in Batch 5 using the management-group/ambient channel behavior where selective silence can be configured deterministically.
+The agent policy in `openclaw/workspace/AGENTS.md` prohibits arithmetic from chat history, direct database writes, model-controlled verification, unsupported business conclusions, and instructions embedded in untrusted attachments.
 
 ## Signed Spring internal API
 
-Spring currently exposes:
-
-- `POST /api/internal/v1/intake/text-candidate`
-- `POST /api/internal/v1/intake/image-candidates`
-- `POST /api/internal/v1/intake/spreadsheets/preview`
-- `POST /api/internal/v1/intake/spreadsheets/{jobId}/confirm`
-- `GET /api/internal/v1/analytics/query?intent=TODAY_SALES`
-
-Requests require:
+Spring exposes tightly scoped OpenClaw endpoints under `/api/internal/v1`. Requests require:
 
 - `X-Restaurant-Timestamp`
 - `X-Restaurant-Request-Id`
@@ -138,7 +125,7 @@ The signature is HMAC-SHA256 over:
 timestamp\nrequestId\nHTTP_METHOD\npathAndQuery\nsha256(body)
 ```
 
-Spring rejects invalid signatures, stale timestamps, and replayed request IDs. `OPENCLAW_BACKEND_SHARED_SECRET` must be the same strong secret on the OpenClaw host and Spring service.
+Spring rejects invalid signatures, stale timestamps, replayed request IDs, and requests over the configured authenticated internal-API rate limit. `OPENCLAW_BACKEND_SHARED_SECRET` must be the same strong secret on the OpenClaw host and Spring service.
 
 ## Ollama model configuration
 
@@ -148,23 +135,23 @@ Logical models remain configuration-driven:
 - `OLLAMA_TEXT_MODEL` — initial `qwen3.5:9b`
 - `OLLAMA_VISION_MODEL` — initial `qwen3.5:9b`
 - `OLLAMA_VISION_FALLBACK` — initial `gemma4:12b`
-- `OLLAMA_REASONING_MODEL` — preferred `qwen3.5:27b`, reserved for approved later workflows
+- `OLLAMA_REASONING_MODEL` — preferred `qwen3.5:27b`
 - `OLLAMA_RESPONSE_MODEL` — initial `qwen3.5:9b`
 
-Use the native Ollama endpoint at `OLLAMA_BASE_URL`.
+Use the native Ollama endpoint at `OLLAMA_BASE_URL`. Model readiness is checked through the local Ollama model-list endpoint; a configured model that is not installed makes `restaurant_health` report not ready.
 
-## Batch 4 setup on the OpenClaw host
+## OpenClaw host setup
 
-Set trusted environment values outside Git. Read the backend shared secret interactively rather than placing it in shell history:
+Keep all credentials outside Git and shell history. Read the Gateway token and backend shared secret interactively:
 
 ```bash
-export OPENCLAW_GATEWAY_TOKEN='<long-random-gateway-token>'
+read -rsp "OpenClaw gateway token: " OPENCLAW_GATEWAY_TOKEN && export OPENCLAW_GATEWAY_TOKEN && echo
 export OPENCLAW_BACKEND_BASE_URL='https://bombay-restaurant-intelligence.onrender.com'
 read -rsp "OpenClaw backend shared secret: " OPENCLAW_BACKEND_SHARED_SECRET && export OPENCLAW_BACKEND_SHARED_SECRET && echo
 export OLLAMA_BASE_URL='http://127.0.0.1:11434'
 ```
 
-Install/validate the restaurant plugin:
+Install and validate the restaurant plugin:
 
 ```bash
 cd openclaw/restaurant-tools
@@ -175,60 +162,126 @@ openclaw plugins install --link .
 openclaw plugins enable bombay-restaurant-tools
 ```
 
-Install/link the official WhatsApp channel on the dedicated account:
+Link the dedicated WhatsApp account:
 
 ```bash
 openclaw channels login --channel whatsapp
 ```
 
-Scan the QR code using the dedicated WhatsApp account. The linked session belongs to OpenClaw, not Spring.
+Scan the QR code with the dedicated account. Configure the real management-group JID and allowed manager numbers only on the OpenClaw host, using `openclaw/openclaw.batch6.example.json5` as the template.
 
-Use `openclaw/openclaw.batch4.example.json5` as the configuration reference and validate the effective config before starting the Gateway.
-
-### Pair the manager DM
-
-With `dmPolicy="pairing"`, an unknown manager receives a one-time pairing code and their business message is not processed until approved.
-
-On the OpenClaw host:
+With `dmPolicy="pairing"`, approve a manager DM explicitly before processing it:
 
 ```bash
 openclaw pairing list whatsapp
 openclaw pairing approve whatsapp <code>
 ```
 
-After approval, test these DM flows:
+## Batch 6 — production hardening
 
-1. `Paid Salman 6500 vegetables` — candidate goes through Spring normalization.
-2. Send a receipt image — Ollama vision extracts a candidate; Spring decides VERIFIED/review.
-3. Send CSV/XLS/XLSX — Spring deterministic preview/confirm path is used.
-4. `What are today's sales?` — answer comes only from Spring verified analytics.
-5. Ask an unsupported judgment question — receive the bounded capability response, not invented business advice.
+### Readiness and health
 
-A real QR-linked WhatsApp session cannot be created in GitHub CI because the session credentials and physical account are operator-controlled. Batch 4 CI therefore proves configuration policy, tool restrictions, existing ingestion/analytics contracts, plugin validity, and Docker/runtime compatibility; the final linked-account smoke test is performed on the OpenClaw host.
+`restaurant_health` combines independent readiness signals instead of inferring health from chat behavior:
 
-## Automated coverage through Batch 4
+- Spring internal API reachable;
+- PostgreSQL query succeeds;
+- document storage is writable/reachable;
+- analytics service can calculate a verified-only response;
+- Ollama is reachable;
+- every configured required Ollama model is installed.
+
+Spring readiness is intentionally scoped to components the restaurant agent depends on. Do not expose credentials, local paths, prompts, attachment contents, or database connection strings in health responses.
+
+### Bounded retries and deadlines
+
+OpenClaw uses bounded infrastructure retries only:
+
+- Spring read-only requests may retry according to `OPENCLAW_BACKEND_READ_RETRIES`;
+- every retry receives a fresh signed request ID;
+- accounting POST/write requests are never blindly retried;
+- Spring requests use `OPENCLAW_BACKEND_TIMEOUT_MS`;
+- Ollama requests use `OLLAMA_REQUEST_TIMEOUT_MS` and `OLLAMA_MAX_RETRIES`;
+- the agent policy forbids conversational retry loops on top of plugin retries.
+
+Idempotency still belongs to Spring through WhatsApp message IDs, checksums, source IDs/rows, and normalized fingerprints.
+
+### Rate limiting
+
+The HMAC-authenticated internal API applies a configurable per-minute request limit after signature validation. Configure `OPENCLAW_BACKEND_MAX_REQUESTS_PER_MINUTE` to suit the management group. Gateway authentication also uses its own attempt/window/lockout limits in the Batch 6 OpenClaw template.
+
+### Structured logging
+
+OpenClaw/plugin logs are structured and content-minimized. Permitted operational fields include:
+
+- timestamp;
+- request ID / source ID;
+- group/sender identifiers when supplied for correlation;
+- component/tool/model name;
+- backend endpoint;
+- processing/review status;
+- retry attempt;
+- error type;
+- latency.
+
+Logs must not include message bodies, attachment contents, HMAC signatures, shared secrets, model prompts, access tokens, database passwords, or raw private model responses.
+
+### Backup and restore
+
+Repository scripts:
+
+```bash
+scripts/backup-postgres.sh
+scripts/restore-postgres.sh <backup-file>
+```
+
+Both scripts are shell-syntax checked by CI. Supply database credentials through the environment at execution time; never commit them. Store backups outside the application container with restricted access and retention appropriate for the restaurant.
+
+Test restore procedures against a disposable/non-production database before relying on a backup. Do not overwrite production as a restore test. Provider-native database backup availability depends on the active Render database plan and should be verified in the Render dashboard before production launch.
+
+### Failure behavior
+
+- Ollama unavailable/model timeout: no accounting write is fabricated; return one concise operational error when a reply is appropriate.
+- malformed/uncertain extraction: Spring review rules still decide `REVIEW_REQUIRED`.
+- Spring/database/storage unavailable: stop the workflow rather than inventing success.
+- duplicate: Spring rejects/reuses idempotency boundaries; group may receive one short duplicate notice.
+- unsupported file: reject before accounting ingestion.
+- unauthorized group/sender: channel policy blocks it before agent/tool execution.
+- prompt injection in text/image/document/spreadsheet: treat it as untrusted business content, never tool authority.
+
+## Automated coverage through Batch 6
 
 CI verifies:
 
-- frontend build;
+- frontend production build;
 - all Spring integration/unit tests;
 - Batch 1 text and verified-sales flows;
-- Batch 2 strict image/review/dedupe flows;
-- Batch 3 deterministic CSV/XLS/XLSX preview/confirm flows;
-- OpenClaw plugin unit tests and generated manifest;
-- Batch 4 WhatsApp config uses pairing, DM isolation, and groups disabled;
-- only the established restaurant tool surface is allowed;
-- broad runtime/filesystem/elevated/agent-to-agent authority is denied;
-- the workspace policy prohibits chat-memory accounting and model-controlled verification;
+- Batch 2 image/review/dedupe/prompt-injection boundaries;
+- Batch 3 deterministic CSV/XLS/XLSX flows;
+- Batch 4 DM pairing/isolation/tool restrictions;
+- Batch 5 group/sender allowlists, silent group behavior, and safe staged-media access;
+- signed internal API rate limiting;
+- database/storage/analytics readiness;
+- bounded Spring read retries and no blind write retries;
+- bounded Ollama retries and installed-model discovery;
+- structured log data minimization;
+- OpenClaw plugin tests and generated manifest validation;
+- backup/restore shell syntax;
 - committed-secret scan;
 - production Docker image build.
 
-## Remaining batches
+## Final operator acceptance checks
 
-### Batch 5 — WhatsApp management group
+CI cannot create the real WhatsApp session or know private production allowlists. Before declaring the WhatsApp assistant operational, perform these checks on the OpenClaw host:
 
-Add the dedicated account to a test management group, configure exact group allowlists and sender allowlists, enable always-listening ambient handling, enforce per-group isolation, and implement deterministic silent data ingestion with replies only for approved dashboard questions/errors/review notifications.
+1. Link the dedicated WhatsApp account by QR and verify reconnect after an OpenClaw restart.
+2. Configure the exact management-group JID and allowed manager numbers; verify an unauthorized group and sender are ignored.
+3. Run `restaurant_health` and confirm Spring/database/storage/analytics/Ollama/model readiness.
+4. In the authorized group, send `Paid Salman 6500 vegetables`; confirm no success reply and verify the backend/dashboard record.
+5. Send a receipt image; confirm VERIFIED data affects totals and REVIEW_REQUIRED data does not.
+6. Send a CSV/XLS/XLSX file; confirm deterministic preview/confirm ingestion and checksum dedupe.
+7. Ask `What were today's sales?`; confirm the reply matches the Spring dashboard.
+8. Ask an unsupported judgment question; confirm only the bounded capability response is returned.
+9. Send the same image/file again; confirm no duplicate accounting record is created.
+10. Exercise a database backup and restore it into a disposable database.
 
-### Batch 6 — production hardening
-
-Complete structured request logging, model/backend/storage/WhatsApp health checks, bounded retries, review notifications, backups, rate limits, operational monitoring, and final failover procedures.
+The final source of business truth remains PostgreSQL via Spring Boot at every step.
