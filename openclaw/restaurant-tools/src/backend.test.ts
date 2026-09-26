@@ -46,4 +46,51 @@ describe("SpringBackendClient signing", () => {
     expect(result.status).toBe("VERIFIED");
     expect(fetchFn).toHaveBeenCalledOnce();
   });
+
+  it("signs the exact approved analytics query string and preserves scoped parameters", async () => {
+    const secret = "analytics-secret";
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe("/api/internal/v1/analytics/query");
+      expect(url.searchParams.get("intent")).toBe("VENDOR_SPEND");
+      expect(url.searchParams.get("period")).toBe("THIS_MONTH");
+      expect(url.searchParams.get("subject")).toBe("Salman & Sons");
+      expect(url.searchParams.has("from")).toBe(false);
+      expect(url.searchParams.has("to")).toBe(false);
+
+      const headers = new Headers(init?.headers);
+      const timestamp = headers.get("X-Restaurant-Timestamp")!;
+      const requestId = headers.get("X-Restaurant-Request-Id")!;
+      const bodyHash = createHash("sha256").update("").digest("hex");
+      const canonicalPath = `${url.pathname}${url.search}`;
+      const canonical = [timestamp, requestId, "GET", canonicalPath, bodyHash].join("\n");
+      const expected = `sha256=${createHmac("sha256", secret).update(canonical).digest("hex")}`;
+      expect(headers.get("X-Restaurant-Signature")).toBe(expected);
+
+      return new Response(JSON.stringify({
+        intent: "VENDOR_SPEND",
+        period: "THIS_MONTH",
+        from: "2026-09-01",
+        to: "2026-09-26",
+        metric: "vendorSpend",
+        subject: "Salman & Sons",
+        value: 12345.67,
+        currency: "INR",
+        previousValue: null,
+        changePercent: null,
+        message: null,
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    const client = new SpringBackendClient("http://spring.local", secret, fetchFn);
+    const answer = await client.queryAnalytics({
+      intent: "VENDOR_SPEND",
+      period: "THIS_MONTH",
+      subject: "Salman & Sons",
+    });
+
+    expect(answer.value).toBe(12345.67);
+    expect(answer.subject).toBe("Salman & Sons");
+    expect(fetchFn).toHaveBeenCalledOnce();
+  });
 });

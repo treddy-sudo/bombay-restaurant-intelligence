@@ -6,6 +6,40 @@ export type TextSourceType = "MANUAL_TEXT" | "WHATSAPP_TEXT";
 export type ImageSourceType = "IMAGE" | "WHATSAPP_IMAGE";
 export type SourceType = TextSourceType | ImageSourceType;
 
+export type DashboardIntent =
+  | "TODAY_SALES"
+  | "YESTERDAY_SALES"
+  | "DATE_RANGE_SALES"
+  | "TODAY_EXPENSES"
+  | "YESTERDAY_EXPENSES"
+  | "DATE_RANGE_EXPENSES"
+  | "TODAY_PROFIT"
+  | "THIS_WEEK_SALES"
+  | "THIS_MONTH_SALES"
+  | "THIS_WEEK_EXPENSES"
+  | "THIS_MONTH_EXPENSES"
+  | "VENDOR_SPEND"
+  | "CATEGORY_SPEND"
+  | "SALARY_TOTAL"
+  | "EMPLOYEE_SALARY"
+  | "CASH_SALES"
+  | "UPI_SALES"
+  | "ZOMATO_SALES"
+  | "SWIGGY_SALES"
+  | "SALES_COMPARISON"
+  | "EXPENSE_COMPARISON"
+  | "PENDING_REVIEW_COUNT";
+
+export type AnalyticsPeriod = "NONE" | "TODAY" | "YESTERDAY" | "THIS_WEEK" | "THIS_MONTH" | "DATE_RANGE";
+
+export type AnalyticsQuery = {
+  intent: DashboardIntent;
+  period?: AnalyticsPeriod;
+  from?: string;
+  to?: string;
+  subject?: string;
+};
+
 export type TextCandidate = {
   sourceId: string;
   sender?: string;
@@ -107,12 +141,17 @@ export type SpreadsheetConfirmResponse = {
 };
 
 export type AnalyticsAnswer = {
-  intent: "TODAY_SALES";
-  from: string;
-  to: string;
-  metric: "sales";
+  intent: DashboardIntent;
+  period: AnalyticsPeriod;
+  from?: string | null;
+  to?: string | null;
+  metric: string;
+  subject?: string | null;
   value: number;
-  currency: "INR";
+  currency?: "INR" | null;
+  previousValue?: number | null;
+  changePercent?: number | null;
+  message?: string | null;
 };
 
 export type SpringReadiness = {
@@ -161,8 +200,17 @@ export class SpringBackendClient {
     return this.request("POST", `/api/internal/v1/intake/spreadsheets/${encodeURIComponent(jobId)}/confirm`, undefined, signal);
   }
 
+  queryAnalytics(query: AnalyticsQuery, signal?: AbortSignal): Promise<AnalyticsAnswer> {
+    const params = new URLSearchParams({ intent: query.intent });
+    if (query.period) params.set("period", query.period);
+    if (query.from) params.set("from", query.from);
+    if (query.to) params.set("to", query.to);
+    if (query.subject) params.set("subject", query.subject);
+    return this.request("GET", `/api/internal/v1/analytics/query?${params.toString()}`, undefined, signal);
+  }
+
   queryTodaySales(signal?: AbortSignal): Promise<AnalyticsAnswer> {
-    return this.request("GET", "/api/internal/v1/analytics/query?intent=TODAY_SALES", undefined, signal);
+    return this.queryAnalytics({ intent: "TODAY_SALES" }, signal);
   }
 
   health(signal?: AbortSignal): Promise<SpringReadiness> {
