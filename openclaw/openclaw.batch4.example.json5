@@ -1,0 +1,120 @@
+{
+  // Batch 4: OpenClaw owns a dedicated WhatsApp DM account. Groups remain disabled until Batch 5.
+  gateway: {
+    mode: "local",
+    bind: "loopback",
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      rateLimit: {
+        maxAttempts: 10,
+        windowMs: 60000,
+        lockoutMs: 300000,
+        exemptLoopback: true,
+      },
+    },
+  },
+
+  session: {
+    // Never share conversational context between different WhatsApp senders.
+    dmScope: "per-channel-peer",
+  },
+
+  channels: {
+    whatsapp: {
+      enabled: true,
+      // Unknown DM senders receive a one-time pairing code and are ignored until approved.
+      dmPolicy: "pairing",
+      // Batch 4 is DM-only. Group routing is introduced and tested separately in Batch 5.
+      groupPolicy: "disabled",
+      textChunkLimit: 4000,
+      mediaMaxMb: 20,
+      sendReadReceipts: true,
+      replyToMode: "first",
+    },
+  },
+
+  models: {
+    providers: {
+      ollama: {
+        baseUrl: "http://127.0.0.1:11434",
+        apiKey: "ollama-local",
+        api: "ollama",
+        timeoutSeconds: 180,
+        models: [
+          {
+            id: "qwen3.5:9b",
+            name: "qwen3.5:9b",
+            reasoning: true,
+            input: ["text", "image"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, thinking: false, keep_alive: "15m" },
+          },
+          {
+            id: "gemma4:12b",
+            name: "gemma4:12b",
+            reasoning: false,
+            input: ["text", "image"],
+            contextTokens: 32768,
+            params: { num_ctx: 32768, keep_alive: "15m" },
+          },
+          {
+            id: "qwen3.5:27b",
+            name: "qwen3.5:27b",
+            reasoning: true,
+            input: ["text"],
+            contextTokens: 65536,
+            params: { num_ctx: 65536, keep_alive: "15m" },
+          },
+        ],
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      workspace: "./openclaw/workspace",
+      model: { primary: "ollama/qwen3.5:9b" },
+      skills: [],
+    },
+  },
+
+  tools: {
+    // This restaurant agent has no shell, database, browser, automation, or arbitrary filesystem tool.
+    allow: [
+      "restaurant_route_text",
+      "restaurant_ingest_text",
+      "restaurant_ingest_image",
+      "restaurant_preview_spreadsheet",
+      "restaurant_confirm_spreadsheet",
+      "restaurant_get_sales",
+    ],
+    deny: [
+      "group:automation",
+      "group:runtime",
+      "group:fs",
+      "sessions_spawn",
+      "sessions_send",
+    ],
+    fs: { workspaceOnly: true },
+    elevated: { enabled: false },
+    agentToAgent: { enabled: false },
+  },
+
+  plugins: {
+    entries: {
+      "bombay-restaurant-tools": {
+        enabled: true,
+        config: {
+          backendBaseUrl: "${OPENCLAW_BACKEND_BASE_URL}",
+          ollamaBaseUrl: "${OLLAMA_BASE_URL}",
+          routerModel: "qwen3.5:9b",
+          textModel: "qwen3.5:9b",
+          visionModel: "qwen3.5:9b",
+          visionFallback: "gemma4:12b",
+          responseModel: "qwen3.5:9b",
+        },
+      },
+    },
+  },
+}
