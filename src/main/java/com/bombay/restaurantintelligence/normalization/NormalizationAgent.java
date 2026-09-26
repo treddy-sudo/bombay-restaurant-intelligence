@@ -22,8 +22,8 @@ public class NormalizationAgent {
     @Transactional
     public NormalizationResult normalize(IntermediateBusinessRecord record){
         if(record.sourceId()!=null && transactions.existsBySourceMessageId(record.sourceId())) throw new DuplicateSourceException("Source already imported: "+record.sourceId());
-        Map<String,String> f=record.fields(); String raw=String.join(" ", Objects.toString(f.get("category"),""),Objects.toString(f.get("description"),""),Objects.toString(record.rawText(),"")).trim(); String context=Objects.toString(f.get("context"),"");
-        CategoryResolution cr=resolveCategory(raw,context);
+        Map<String,String> f=record.fields(); String explicitCategory=Objects.toString(f.get("category"),"").trim(); String raw=String.join(" ", explicitCategory,Objects.toString(f.get("description"),""),Objects.toString(record.rawText(),"")).trim(); String context=Objects.toString(f.get("context"),"");
+        CategoryResolution cr=resolveCategory(explicitCategory,raw,context);
         BigDecimal amount=parseAmount(f.get("amount"));
         Vendor vendor=resolveVendor(f.get("vendor")); Employee employee=resolveEmployee(f.get("employee"));
         TransactionType type=resolveType(f.get("transactionType"),cr.category(),vendor,employee,raw);
@@ -43,10 +43,10 @@ public class NormalizationAgent {
         return result(tx,reasons.isEmpty()?"Recorded successfully":"Sent to review: "+String.join("; ",reasons));
     }
 
-    private CategoryResolution resolveCategory(String raw,String context){
+    private CategoryResolution resolveCategory(String explicitCategory,String raw,String context){
         String text=raw==null?"":raw.toLowerCase(Locale.ROOT);
-        if(!text.isBlank()){
-            Optional<Category> direct=categories.findByCodeIgnoreCase(text.trim().replace(' ','_')); if(direct.isPresent()) return new CategoryResolution(direct.get(),BigDecimal.ONE);
+        if(explicitCategory!=null&&!explicitCategory.isBlank()){
+            Optional<Category> direct=categories.findByCodeIgnoreCase(explicitCategory.trim().replace(' ','_')); if(direct.isPresent()) return new CategoryResolution(direct.get(),BigDecimal.ONE);
         }
         List<NormalizationMapping> all=mappings.findByCanonicalType("CATEGORY");
         return all.stream().filter(m->text.contains(m.getRawTerm().toLowerCase(Locale.ROOT))).filter(m->contextAllowed(m,text,context)).sorted(Comparator.comparingInt((NormalizationMapping m)->m.getRawTerm().length()).reversed()).findFirst().flatMap(m->categories.findByCodeIgnoreCase(m.getCanonicalValue()).map(c->new CategoryResolution(c,m.getConfidence()))).orElseGet(()->heuristicCategory(text,context));
