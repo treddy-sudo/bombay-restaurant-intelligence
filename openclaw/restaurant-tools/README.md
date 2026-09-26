@@ -14,14 +14,14 @@ The plugin deliberately has no database access. It can only:
 
 ```bash
 export OPENCLAW_BACKEND_BASE_URL=http://127.0.0.1:8080
-export OPENCLAW_BACKEND_SHARED_SECRET='replace-with-a-long-random-secret'
+read -rsp "OpenClaw backend shared secret: " OPENCLAW_BACKEND_SHARED_SECRET && export OPENCLAW_BACKEND_SHARED_SECRET && echo
 export OLLAMA_BASE_URL=http://127.0.0.1:11434
 export OLLAMA_ROUTER_MODEL=qwen3.5:9b
 export OLLAMA_TEXT_MODEL=qwen3.5:9b
 export OLLAMA_RESPONSE_MODEL=qwen3.5:9b
 ```
 
-The Spring service must use the same `OPENCLAW_BACKEND_SHARED_SECRET`.
+The Spring service must use the same `OPENCLAW_BACKEND_SHARED_SECRET`. Keep that value outside Git and documentation.
 
 ## Build and validate
 
