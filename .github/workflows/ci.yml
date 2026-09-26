@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-java@v4
+        with: { distribution: 'temurin', java-version: '21', cache: 'maven' }
+      - name: Frontend install
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Frontend build
+        working-directory: frontend
+        run: npm run build
+      - name: Copy frontend into Spring Boot
+        run: mkdir -p src/main/resources/static && cp -R frontend/dist/. src/main/resources/static/
+      - name: Backend tests and package
+        run: mvn -B clean test package
+      - name: Verify secrets are not committed
+        run: |
+          ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|AI_API_KEY|DATABASE_PASSWORD)=[^[:space:]]+' -- ':!*.example'
