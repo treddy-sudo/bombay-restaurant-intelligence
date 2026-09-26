@@ -50,6 +50,7 @@ describe("Batch 4 native WhatsApp DM configuration", () => {
     expect(policy).toContain("IntakeAgent -> NormalizationAgent");
     expect(policy).toContain("restaurant_preview_spreadsheet");
     expect(policy).toContain("Do not send spreadsheet contents to a vision or general reasoning model");
-    expect(policy).toContain("ordinary accepted DMs as reply-required turns");
+    expect(policy).toContain("Ordinary accepted DMs may require a visible channel response");
+    expect(policy).toContain("keep any unavoidable DM acknowledgement minimal");
   });
 });
