@@ -13,6 +13,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 
 @Configuration
 public class SecurityConfig {
@@ -50,15 +51,17 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain security(HttpSecurity http,
-                                 AuthenticationEntryPoint restAuthenticationEntryPoint) throws Exception {
+                                 AuthenticationEntryPoint restAuthenticationEntryPoint,
+                                 @Value("${app.internal-api.secret:}") String internalApiSecret) throws Exception {
         return http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers("/actuator/health", "/api/whatsapp/webhook", "/", "/index.html", "/assets/**", "/favicon.ico")
+                        .requestMatchers("/actuator/health", "/api/whatsapp/webhook", "/api/internal/**", "/", "/index.html", "/assets/**", "/favicon.ico")
                         .permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(e -> e.authenticationEntryPoint(restAuthenticationEntryPoint))
                 .httpBasic(basic -> basic.authenticationEntryPoint(restAuthenticationEntryPoint))
+                .addFilterBefore(new InternalApiAuthenticationFilter(internalApiSecret), BasicAuthenticationFilter.class)
                 .build();
     }
 }

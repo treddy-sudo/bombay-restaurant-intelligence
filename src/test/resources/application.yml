@@ -10,6 +10,7 @@ spring:
     enabled: false
 app:
   owner: { username: owner, password: test-password }
+  internal-api: { secret: test-shared-secret }
   normalization: { auto-post-threshold: 0.85 }
   storage: { local-root: ./target/test-storage }
   whatsapp: { mode: mock, verify-token: verify-me }
