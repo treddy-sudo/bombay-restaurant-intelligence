@@ -7,7 +7,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "plugin:check": "npm run build && openclaw plugins build --entry ./dist/index.js --check && openclaw plugins validate --entry ./dist/index.js"
+    "plugin:build": "npm run build && openclaw plugins build --entry ./dist/index.js",
+    "plugin:validate": "npm run plugin:build && openclaw plugins validate --entry ./dist/index.js",
+    "plugin:check": "npm run plugin:build && openclaw plugins build --entry ./dist/index.js --check && openclaw plugins validate --entry ./dist/index.js"
   },
   "dependencies": {
     "typebox": "^1.1.38"
