@@ -21,6 +21,7 @@ export type RuntimeConfig = {
   backendBaseUrl: string;
   sharedSecret: string;
   ollamaBaseUrl: string;
+  ollamaApiKey?: string;
   routerModel: string;
   textModel: string;
   visionModel: string;
@@ -69,10 +70,13 @@ export function resolveRuntimeConfig(config: RestaurantPluginConfig): RuntimeCon
     throw new Error("OPENCLAW_BACKEND_SHARED_SECRET is required");
   }
 
+  const ollamaApiKey = (process.env.OLLAMA_API_KEY ?? "").trim() || undefined;
+
   return {
     backendBaseUrl: (process.env.OPENCLAW_BACKEND_BASE_URL ?? config.backendBaseUrl ?? "http://127.0.0.1:8080").replace(/\/+$/, ""),
     sharedSecret,
     ollamaBaseUrl: (process.env.OLLAMA_BASE_URL ?? config.ollamaBaseUrl ?? "http://127.0.0.1:11434").replace(/\/+$/, ""),
+    ollamaApiKey,
     routerModel: process.env.OLLAMA_ROUTER_MODEL ?? config.routerModel ?? "qwen3.5:9b",
     textModel: process.env.OLLAMA_TEXT_MODEL ?? config.textModel ?? "qwen3.5:9b",
     visionModel: process.env.OLLAMA_VISION_MODEL ?? config.visionModel ?? "qwen3.5:9b",
