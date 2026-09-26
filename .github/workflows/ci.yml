@@ -43,8 +43,10 @@ jobs:
       - name: OpenClaw plugin build and manifest validation
         working-directory: openclaw/restaurant-tools
         run: npm run plugin:check
+      - name: Validate backup scripts
+        run: bash -n scripts/backup-postgres.sh scripts/restore-postgres.sh
       - name: Verify secrets are not committed
         run: |
-          ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|AI_API_KEY|DATABASE_PASSWORD|OPENCLAW_BACKEND_SHARED_SECRET)=[^[:space:]]+' -- ':!*.example'
+          ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|WHATSAPP_APP_SECRET|AI_API_KEY|DATABASE_PASSWORD|OPENCLAW_BACKEND_SHARED_SECRET|OPENCLAW_GATEWAY_TOKEN|S3_SECRET_KEY)=[^[:space:]]+' -- ':!*.example'
       - name: Docker image build
         run: docker build --tag bombay-restaurant-intelligence:ci .
