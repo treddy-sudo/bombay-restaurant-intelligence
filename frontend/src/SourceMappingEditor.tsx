@@ -1,4 +1,5 @@
 import { FormEvent, useState } from 'react';
+import './SourceMappingEditor.css';
 
 type Mapping={id:string;sourceKey:string;sourceColumn:string;canonicalField:string};
 type ApiFn=<T>(path:string,options?:RequestInit)=>Promise<T>;
