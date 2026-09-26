@@ -1,5 +1,6 @@
 package com.bombay.restaurantintelligence.normalization;
 
+import com.bombay.restaurantintelligence.analytics.DailyMetricService;
 import com.bombay.restaurantintelligence.domain.*;
 import com.bombay.restaurantintelligence.intake.IntermediateBusinessRecord;
 import com.bombay.restaurantintelligence.repository.*;
@@ -16,8 +17,8 @@ import java.util.*;
 
 @Service
 public class NormalizationAgent {
-    private final TransactionRepository transactions; private final CategoryRepository categories; private final VendorRepository vendors; private final EmployeeRepository employees; private final NormalizationMappingRepository mappings; private final ReviewItemRepository reviews; private final BigDecimal threshold;
-    public NormalizationAgent(TransactionRepository transactions,CategoryRepository categories,VendorRepository vendors,EmployeeRepository employees,NormalizationMappingRepository mappings,ReviewItemRepository reviews,@Value("${app.normalization.auto-post-threshold:0.85}") BigDecimal threshold){this.transactions=transactions;this.categories=categories;this.vendors=vendors;this.employees=employees;this.mappings=mappings;this.reviews=reviews;this.threshold=threshold;}
+    private final TransactionRepository transactions; private final CategoryRepository categories; private final VendorRepository vendors; private final EmployeeRepository employees; private final NormalizationMappingRepository mappings; private final ReviewItemRepository reviews; private final DailyMetricService dailyMetrics; private final BigDecimal threshold;
+    public NormalizationAgent(TransactionRepository transactions,CategoryRepository categories,VendorRepository vendors,EmployeeRepository employees,NormalizationMappingRepository mappings,ReviewItemRepository reviews,DailyMetricService dailyMetrics,@Value("${app.normalization.auto-post-threshold:0.85}") BigDecimal threshold){this.transactions=transactions;this.categories=categories;this.vendors=vendors;this.employees=employees;this.mappings=mappings;this.reviews=reviews;this.dailyMetrics=dailyMetrics;this.threshold=threshold;}
 
     @Transactional
     public NormalizationResult normalize(IntermediateBusinessRecord record){
@@ -40,6 +41,7 @@ public class NormalizationAgent {
         String fingerprint=fingerprint(record,tx,cr.category(),vendor); if(fingerprint!=null){if(transactions.existsByNormalizedFingerprint(fingerprint))throw new DuplicateSourceException("Normalized source row already imported");tx.setNormalizedFingerprint(fingerprint);}
         try { transactions.saveAndFlush(tx); } catch(DataIntegrityViolationException e){ throw new DuplicateSourceException("Duplicate source detected"); }
         if(status==TransactionStatus.REVIEW_REQUIRED) reviews.save(new ReviewItem(tx,String.join("; ",reasons),raw));
+        if(status==TransactionStatus.VERIFIED) dailyMetrics.refresh(tx.getBusinessDate());
         return result(tx,reasons.isEmpty()?"Recorded successfully":"Sent to review: "+String.join("; ",reasons));
     }
 
