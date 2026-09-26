@@ -1,6 +1,5 @@
 package com.bombay.restaurantintelligence.openclaw;
 
-import com.bombay.restaurantintelligence.analytics.AnalyticsAgent;
 import com.bombay.restaurantintelligence.domain.SourceType;
 import com.bombay.restaurantintelligence.intake.IntakeAgent;
 import com.bombay.restaurantintelligence.intake.IntermediateBusinessRecord;
@@ -22,7 +21,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -33,7 +31,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/internal/v1")
 public class OpenClawInternalController {
-    private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
     private static final int MAX_SPREADSHEET_BYTES = 10 * 1024 * 1024;
     private static final int MAX_BASE64_CHARS = 14_000_000;
     private static final Set<String> CSV_CONTENT_TYPES = Set.of("text/csv", "application/csv");
@@ -41,16 +38,16 @@ public class OpenClawInternalController {
     private static final String XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     private final IntakeAgent intake;
-    private final AnalyticsAgent analytics;
+    private final ApprovedDashboardQueryService dashboardQueries;
     private final OpenClawImageIntakeService imageIntake;
     private final UploadIngestionService uploads;
 
     public OpenClawInternalController(IntakeAgent intake,
-                                      AnalyticsAgent analytics,
+                                      ApprovedDashboardQueryService dashboardQueries,
                                       OpenClawImageIntakeService imageIntake,
                                       UploadIngestionService uploads) {
         this.intake = intake;
-        this.analytics = analytics;
+        this.dashboardQueries = dashboardQueries;
         this.imageIntake = imageIntake;
         this.uploads = uploads;
     }
@@ -118,14 +115,13 @@ public class OpenClawInternalController {
     }
 
     @GetMapping("/analytics/query")
-    public AnalyticsAnswer query(@RequestParam DashboardIntent intent) {
-        return switch (intent) {
-            case TODAY_SALES -> {
-                LocalDate today = LocalDate.now(BUSINESS_ZONE);
-                BigDecimal sales = analytics.dashboard(today, today).selected().sales();
-                yield new AnalyticsAnswer(intent, today, today, "sales", sales, "INR");
-            }
-        };
+    public ApprovedAnalyticsAnswer query(
+            @RequestParam DashboardIntent intent,
+            @RequestParam(defaultValue = "NONE") AnalyticsPeriod period,
+            @RequestParam(required = false) LocalDate from,
+            @RequestParam(required = false) LocalDate to,
+            @RequestParam(required = false) String subject) {
+        return dashboardQueries.query(intent, period, from, to, subject);
     }
 
     private static void validateSpreadsheetType(String filename, String contentType) {
@@ -165,12 +161,4 @@ public class OpenClawInternalController {
             @NotBlank @Size(max = 255) String filename,
             @NotBlank String contentType,
             @NotBlank String fileBase64) {}
-
-    public record AnalyticsAnswer(
-            DashboardIntent intent,
-            LocalDate from,
-            LocalDate to,
-            String metric,
-            BigDecimal value,
-            String currency) {}
 }
