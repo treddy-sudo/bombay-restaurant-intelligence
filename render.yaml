@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: bombay-restaurant-intelligence
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: DATABASE_HOST
+        fromDatabase: { name: bombay-restaurant-intelligence-db, property: host }
+      - key: DATABASE_PORT
+        fromDatabase: { name: bombay-restaurant-intelligence-db, property: port }
+      - key: DATABASE_NAME
+        fromDatabase: { name: bombay-restaurant-intelligence-db, property: database }
+      - key: DATABASE_USERNAME
+        fromDatabase: { name: bombay-restaurant-intelligence-db, property: user }
+      - key: DATABASE_PASSWORD
+        fromDatabase: { name: bombay-restaurant-intelligence-db, property: password }
+      - key: APP_OWNER_USERNAME
+        sync: false
+      - key: APP_OWNER_PASSWORD
+        sync: false
+      - key: WHATSAPP_MODE
+        value: mock
+      - key: AI_EXTRACTION_MODE
+        value: mock
+
+databases:
+  - name: bombay-restaurant-intelligence-db
+    plan: basic-256mb
+    region: singapore
+    databaseName: bombay_restaurant_intelligence
