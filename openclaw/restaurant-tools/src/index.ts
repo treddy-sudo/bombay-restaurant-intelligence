@@ -1,7 +1,7 @@
 import { Type } from "typebox";
 import { defineToolPlugin } from "openclaw/plugin-sdk/tool-plugin";
 import { SpringBackendClient } from "./backend.js";
-import { resolveRuntimeConfig, type RestaurantPluginConfig } from "./config.js";
+import { resolveRuntimeConfig, type RestaurantPluginConfig, type RuntimeConfig } from "./config.js";
 import { resolveAttachmentInput } from "./media.js";
 import { OllamaClient } from "./ollama.js";
 import { RestaurantRouter } from "./router.js";
@@ -13,20 +13,38 @@ const configSchema = Type.Object({
   textModel: Type.Optional(Type.String()),
   visionModel: Type.Optional(Type.String()),
   visionFallback: Type.Optional(Type.String()),
+  reasoningModel: Type.Optional(Type.String()),
   responseModel: Type.Optional(Type.String()),
   inboundMediaRoots: Type.Optional(Type.Array(Type.String({ minLength: 1 }), { minItems: 1 })),
+  backendTimeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 300000 })),
+  backendReadRetries: Type.Optional(Type.Integer({ minimum: 0, maximum: 2 })),
+  ollamaTimeoutMs: Type.Optional(Type.Integer({ minimum: 1000, maximum: 300000 })),
+  ollamaMaxRetries: Type.Optional(Type.Integer({ minimum: 0, maximum: 2 })),
 });
 
+function backendFromRuntime(runtime: RuntimeConfig): SpringBackendClient {
+  return new SpringBackendClient(runtime.backendBaseUrl, runtime.sharedSecret, fetch, {
+    timeoutMs: runtime.backendTimeoutMs,
+    readRetries: runtime.backendReadRetries,
+  });
+}
+
+function ollamaFromRuntime(runtime: RuntimeConfig): OllamaClient {
+  return new OllamaClient(runtime.ollamaBaseUrl, fetch, {
+    timeoutMs: runtime.ollamaTimeoutMs,
+    maxRetries: runtime.ollamaMaxRetries,
+  });
+}
+
 function backendFor(config: RestaurantPluginConfig): SpringBackendClient {
-  const runtime = resolveRuntimeConfig(config);
-  return new SpringBackendClient(runtime.backendBaseUrl, runtime.sharedSecret);
+  return backendFromRuntime(resolveRuntimeConfig(config));
 }
 
 function routerFor(config: RestaurantPluginConfig): RestaurantRouter {
   const runtime = resolveRuntimeConfig(config);
   return new RestaurantRouter(
-    backendFor(config),
-    new OllamaClient(runtime.ollamaBaseUrl),
+    backendFromRuntime(runtime),
+    ollamaFromRuntime(runtime),
     {
       router: runtime.routerModel,
       text: runtime.textModel,
@@ -163,7 +181,7 @@ export default defineToolPlugin({
         });
         const resolvedFilename = filename?.trim() || input.stagedFilename;
         if (!resolvedFilename) throw new Error("filename is required for inline spreadsheet Base64");
-        const preview = await backendFor(config).previewSpreadsheet(
+        const preview = await backendFromRuntime(runtime).previewSpreadsheet(
           { fileBase64: input.base64, contentType, filename: resolvedFilename },
           context.signal,
         );
@@ -190,6 +208,52 @@ export default defineToolPlugin({
       async execute(_params, config, context) {
         const result = await routerFor(config).getTodaySales(context.signal);
         return { ok: true, result };
+      },
+    }),
+    tool({
+      name: "restaurant_health",
+      label: "Restaurant Intelligence Health",
+      description: "Check signed Spring database/storage/analytics readiness and verify that the configured Ollama models are installed. This diagnostic never invokes a model or reads accounting data from chat history.",
+      parameters: Type.Object({}, { additionalProperties: false }),
+      async execute(_params, config, context) {
+        const runtime = resolveRuntimeConfig(config);
+        const backend = backendFromRuntime(runtime);
+        const ollama = ollamaFromRuntime(runtime);
+        const requiredModels = [...new Set([
+          runtime.routerModel,
+          runtime.textModel,
+          runtime.visionModel,
+          runtime.visionFallback,
+          runtime.reasoningModel,
+          runtime.responseModel,
+        ].filter(Boolean))];
+
+        const [springResult, modelResult] = await Promise.allSettled([
+          backend.health(context.signal),
+          ollama.listModels(context.signal),
+        ]);
+        const spring = springResult.status === "fulfilled"
+          ? springResult.value
+          : { status: "DOWN" as const, errorType: springResult.reason instanceof Error ? springResult.reason.name : "UnknownError" };
+        const availableModels = modelResult.status === "fulfilled" ? modelResult.value : [];
+        const installed = new Set(availableModels);
+        const missingModels = requiredModels.filter((model) => !installed.has(model));
+        const ollamaStatus = modelResult.status === "fulfilled" ? (missingModels.length === 0 ? "UP" : "DEGRADED") : "DOWN";
+        const status = spring.status === "UP" && ollamaStatus === "UP" ? "UP" : (spring.status === "DOWN" || ollamaStatus === "DOWN" ? "DOWN" : "DEGRADED");
+
+        return {
+          ok: status === "UP",
+          health: {
+            status,
+            spring,
+            ollama: {
+              status: ollamaStatus,
+              requiredModels,
+              missingModels,
+              availableModelCount: availableModels.length,
+            },
+          },
+        };
       },
     }),
   ],
