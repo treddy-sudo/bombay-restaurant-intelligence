@@ -5,6 +5,7 @@ import { resolveRuntimeConfig, type RestaurantPluginConfig, type RuntimeConfig }
 import { resolveAttachmentInput } from "./media.js";
 import { OllamaClient } from "./ollama.js";
 import { RestaurantRouter } from "./router.js";
+import { observeTool, reviewStatusFromResults } from "./tool-observability.js";
 
 const configSchema = Type.Object({
   backendBaseUrl: Type.Optional(Type.String()),
@@ -78,6 +79,12 @@ const spreadsheetContentType = Type.Union([
   Type.Literal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
 ]);
 
+const whatsappContext = {
+  sourceId: Type.Optional(Type.String({ minLength: 1 })),
+  sender: Type.Optional(Type.String()),
+  groupId: Type.Optional(Type.String()),
+};
+
 export default defineToolPlugin({
   id: "bombay-restaurant-tools",
   name: "Bombay Restaurant Tools",
@@ -92,15 +99,30 @@ export default defineToolPlugin({
         text: Type.String(),
         sourceId: Type.String(),
         sender: Type.Optional(Type.String()),
+        groupId: Type.Optional(Type.String()),
         sourceType: textSourceType,
       }, { additionalProperties: false }),
-      async execute({ text, sourceId, sender, sourceType }, config, context) {
-        const result = await routerFor(config).routeText(
-          text,
-          sourceId,
-          sender,
-          sourceType ?? "MANUAL_TEXT",
-          context.signal,
+      async execute({ text, sourceId, sender, groupId, sourceType }, config, context) {
+        const runtime = resolveRuntimeConfig(config);
+        const result = await observeTool(
+          {
+            whatsappMessageId: sourceId,
+            groupId,
+            senderId: sender,
+            messageType: "TEXT",
+            agentTool: "restaurant_route_text",
+            ollamaModel: runtime.routerModel,
+          },
+          () => routerFor(config).routeText(text, sourceId, sender, sourceType ?? "MANUAL_TEXT", context.signal),
+          (value) => {
+            const record = typeof value.record === "object" && value.record !== null
+              ? value.record as { status?: string }
+              : undefined;
+            return {
+              classification: typeof value.classification === "string" ? value.classification : undefined,
+              reviewStatus: record?.status,
+            };
+          },
         );
         return { ok: true, result };
       },
@@ -113,15 +135,22 @@ export default defineToolPlugin({
         text: Type.String(),
         sourceId: Type.String(),
         sender: Type.Optional(Type.String()),
+        groupId: Type.Optional(Type.String()),
         sourceType: textSourceType,
       }, { additionalProperties: false }),
-      async execute({ text, sourceId, sender, sourceType }, config, context) {
-        const record = await routerFor(config).ingestText(
-          text,
-          sourceId,
-          sender,
-          sourceType ?? "MANUAL_TEXT",
-          context.signal,
+      async execute({ text, sourceId, sender, groupId, sourceType }, config, context) {
+        const runtime = resolveRuntimeConfig(config);
+        const record = await observeTool(
+          {
+            whatsappMessageId: sourceId,
+            groupId,
+            senderId: sender,
+            messageType: "TEXT",
+            agentTool: "restaurant_ingest_text",
+            ollamaModel: runtime.textModel,
+          },
+          () => routerFor(config).ingestText(text, sourceId, sender, sourceType ?? "MANUAL_TEXT", context.signal),
+          (value) => ({ classification: "DATA_TEXT", reviewStatus: value.status }),
         );
         return { ok: true, record };
       },
@@ -137,9 +166,10 @@ export default defineToolPlugin({
         filename: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
         sourceId: Type.String({ minLength: 1 }),
         sender: Type.Optional(Type.String()),
+        groupId: Type.Optional(Type.String()),
         sourceType: imageSourceType,
       }, { additionalProperties: false }),
-      async execute({ imageBase64, attachmentPath, contentType, filename, sourceId, sender, sourceType }, config, context) {
+      async execute({ imageBase64, attachmentPath, contentType, filename, sourceId, sender, groupId, sourceType }, config, context) {
         const runtime = resolveRuntimeConfig(config);
         const input = await resolveAttachmentInput({
           inlineBase64: imageBase64,
@@ -149,14 +179,29 @@ export default defineToolPlugin({
         });
         const resolvedFilename = filename?.trim() || input.stagedFilename;
         if (!resolvedFilename) throw new Error("filename is required for inline image Base64");
-        const result = await routerFor(config).ingestImage(
-          input.base64,
-          contentType,
-          resolvedFilename,
-          sourceId,
-          sender,
-          sourceType ?? "IMAGE",
-          context.signal,
+        const result = await observeTool(
+          {
+            whatsappMessageId: sourceId,
+            groupId,
+            senderId: sender,
+            messageType: "IMAGE",
+            agentTool: "restaurant_ingest_image",
+            ollamaModel: runtime.visionModel,
+          },
+          () => routerFor(config).ingestImage(
+            input.base64,
+            contentType,
+            resolvedFilename,
+            sourceId,
+            sender,
+            sourceType ?? "IMAGE",
+            context.signal,
+          ),
+          (value) => ({
+            classification: "DATA_IMAGE",
+            ollamaModel: value.modelUsed,
+            reviewStatus: reviewStatusFromResults(value.ingestion.results),
+          }),
         );
         return { ok: true, result };
       },
@@ -170,8 +215,9 @@ export default defineToolPlugin({
         attachmentPath: Type.Optional(Type.String({ minLength: 1 })),
         contentType: spreadsheetContentType,
         filename: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+        ...whatsappContext,
       }, { additionalProperties: false }),
-      async execute({ fileBase64, attachmentPath, contentType, filename }, config, context) {
+      async execute({ fileBase64, attachmentPath, contentType, filename, sourceId, sender, groupId }, config, context) {
         const runtime = resolveRuntimeConfig(config);
         const input = await resolveAttachmentInput({
           inlineBase64: fileBase64,
@@ -181,9 +227,19 @@ export default defineToolPlugin({
         });
         const resolvedFilename = filename?.trim() || input.stagedFilename;
         if (!resolvedFilename) throw new Error("filename is required for inline spreadsheet Base64");
-        const preview = await backendFromRuntime(runtime).previewSpreadsheet(
-          { fileBase64: input.base64, contentType, filename: resolvedFilename },
-          context.signal,
+        const preview = await observeTool(
+          {
+            whatsappMessageId: sourceId,
+            groupId,
+            senderId: sender,
+            messageType: contentType.includes("csv") ? "CSV" : "SPREADSHEET",
+            agentTool: "restaurant_preview_spreadsheet",
+          },
+          () => backendFromRuntime(runtime).previewSpreadsheet(
+            { fileBase64: input.base64, contentType, filename: resolvedFilename },
+            context.signal,
+          ),
+          () => ({ classification: contentType.includes("csv") ? "DATA_CSV" : "DATA_SPREADSHEET", reviewStatus: "PREVIEW" }),
         );
         return { ok: true, preview };
       },
@@ -194,9 +250,20 @@ export default defineToolPlugin({
       description: "Confirm a previously previewed spreadsheet job in Spring so every parsed row passes through IntakeAgent and NormalizationAgent before persistence. This tool does not use Ollama.",
       parameters: Type.Object({
         jobId: Type.String({ minLength: 1 }),
+        ...whatsappContext,
       }, { additionalProperties: false }),
-      async execute({ jobId }, config, context) {
-        const confirmation = await backendFor(config).confirmSpreadsheet(jobId, context.signal);
+      async execute({ jobId, sourceId, sender, groupId }, config, context) {
+        const confirmation = await observeTool(
+          {
+            whatsappMessageId: sourceId,
+            groupId,
+            senderId: sender,
+            messageType: "SPREADSHEET",
+            agentTool: "restaurant_confirm_spreadsheet",
+          },
+          () => backendFor(config).confirmSpreadsheet(jobId, context.signal),
+          (value) => ({ reviewStatus: reviewStatusFromResults(value.results) }),
+        );
         return { ok: true, confirmation };
       },
     }),
@@ -204,9 +271,21 @@ export default defineToolPlugin({
       name: "restaurant_get_sales",
       label: "Get Verified Sales",
       description: "Get today's verified sales from the Spring analytics API and have Ollama format only the backend-provided value.",
-      parameters: Type.Object({}, { additionalProperties: false }),
-      async execute(_params, config, context) {
-        const result = await routerFor(config).getTodaySales(context.signal);
+      parameters: Type.Object({ ...whatsappContext }, { additionalProperties: false }),
+      async execute({ sourceId, sender, groupId }, config, context) {
+        const runtime = resolveRuntimeConfig(config);
+        const result = await observeTool(
+          {
+            whatsappMessageId: sourceId,
+            groupId,
+            senderId: sender,
+            messageType: "QUESTION",
+            agentTool: "restaurant_get_sales",
+            ollamaModel: runtime.responseModel,
+          },
+          () => routerFor(config).getTodaySales(context.signal),
+          () => ({ classification: "DASHBOARD_QUESTION" }),
+        );
         return { ok: true, result };
       },
     }),
@@ -217,43 +296,50 @@ export default defineToolPlugin({
       parameters: Type.Object({}, { additionalProperties: false }),
       async execute(_params, config, context) {
         const runtime = resolveRuntimeConfig(config);
-        const backend = backendFromRuntime(runtime);
-        const ollama = ollamaFromRuntime(runtime);
-        const requiredModels = [...new Set([
-          runtime.routerModel,
-          runtime.textModel,
-          runtime.visionModel,
-          runtime.visionFallback,
-          runtime.reasoningModel,
-          runtime.responseModel,
-        ].filter(Boolean))];
+        const health = await observeTool(
+          { messageType: "HEALTH", agentTool: "restaurant_health" },
+          async () => {
+            const backend = backendFromRuntime(runtime);
+            const ollama = ollamaFromRuntime(runtime);
+            const requiredModels = [...new Set([
+              runtime.routerModel,
+              runtime.textModel,
+              runtime.visionModel,
+              runtime.visionFallback,
+              runtime.reasoningModel,
+              runtime.responseModel,
+            ].filter(Boolean))];
 
-        const [springResult, modelResult] = await Promise.allSettled([
-          backend.health(context.signal),
-          ollama.listModels(context.signal),
-        ]);
-        const spring = springResult.status === "fulfilled"
-          ? springResult.value
-          : { status: "DOWN" as const, errorType: springResult.reason instanceof Error ? springResult.reason.name : "UnknownError" };
-        const availableModels = modelResult.status === "fulfilled" ? modelResult.value : [];
-        const installed = new Set(availableModels);
-        const missingModels = requiredModels.filter((model) => !installed.has(model));
-        const ollamaStatus = modelResult.status === "fulfilled" ? (missingModels.length === 0 ? "UP" : "DEGRADED") : "DOWN";
-        const status = spring.status === "UP" && ollamaStatus === "UP" ? "UP" : (spring.status === "DOWN" || ollamaStatus === "DOWN" ? "DOWN" : "DEGRADED");
+            const [springResult, modelResult] = await Promise.allSettled([
+              backend.health(context.signal),
+              ollama.listModels(context.signal),
+            ]);
+            const spring = springResult.status === "fulfilled"
+              ? springResult.value
+              : { status: "DOWN" as const, errorType: springResult.reason instanceof Error ? springResult.reason.name : "UnknownError" };
+            const availableModels = modelResult.status === "fulfilled" ? modelResult.value : [];
+            const installed = new Set(availableModels);
+            const missingModels = requiredModels.filter((model) => !installed.has(model));
+            const ollamaStatus = modelResult.status === "fulfilled" ? (missingModels.length === 0 ? "UP" : "DEGRADED") : "DOWN";
+            const status = spring.status === "UP" && ollamaStatus === "UP"
+              ? "UP"
+              : (spring.status === "DOWN" || ollamaStatus === "DOWN" ? "DOWN" : "DEGRADED");
 
-        return {
-          ok: status === "UP",
-          health: {
-            status,
-            spring,
-            ollama: {
-              status: ollamaStatus,
-              requiredModels,
-              missingModels,
-              availableModelCount: availableModels.length,
-            },
+            return {
+              status,
+              spring,
+              ollama: {
+                status: ollamaStatus,
+                requiredModels,
+                missingModels,
+                availableModelCount: availableModels.length,
+              },
+            };
           },
-        };
+          (value) => ({ processingStatus: value.status }),
+        );
+
+        return { ok: health.status === "UP", health };
       },
     }),
   ],
