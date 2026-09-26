@@ -155,12 +155,12 @@ Use the native Ollama endpoint at `OLLAMA_BASE_URL`.
 
 ## Batch 4 setup on the OpenClaw host
 
-Set trusted environment values outside Git:
+Set trusted environment values outside Git. Read the backend shared secret interactively rather than placing it in shell history:
 
 ```bash
 export OPENCLAW_GATEWAY_TOKEN='<long-random-gateway-token>'
 export OPENCLAW_BACKEND_BASE_URL='https://bombay-restaurant-intelligence.onrender.com'
-export OPENCLAW_BACKEND_SHARED_SECRET='<same-random-secret-configured-on-spring>'
+read -rsp "OpenClaw backend shared secret: " OPENCLAW_BACKEND_SHARED_SECRET && export OPENCLAW_BACKEND_SHARED_SECRET && echo
 export OLLAMA_BASE_URL='http://127.0.0.1:11434'
 ```
 
