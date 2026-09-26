@@ -33,7 +33,7 @@ server:
 app:
   owner:
     username: ${APP_OWNER_USERNAME:owner}
-    password: ${APP_OWNER_PASSWORD:change-me}
+    password: ${APP_OWNER_PASSWORD}
   normalization:
     auto-post-threshold: ${NORMALIZATION_AUTO_POST_THRESHOLD:0.85}
   storage:
