@@ -1,0 +1,13 @@
+.env
+.env.*
+!.env.example
+target/
+frontend/node_modules/
+frontend/dist/
+src/main/resources/static/assets/
+src/main/resources/static/index.html
+storage/
+*.log
+.idea/
+.vscode/
+.DS_Store

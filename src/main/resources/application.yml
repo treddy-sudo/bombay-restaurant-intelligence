@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: bombay-restaurant-intelligence
+  datasource:
+    url: jdbc:postgresql://${DATABASE_HOST:localhost}:${DATABASE_PORT:5432}/${DATABASE_NAME:bombay_restaurant_intelligence}
+    username: ${DATABASE_USERNAME:postgres}
+    password: ${DATABASE_PASSWORD:postgres}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+server:
+  forward-headers-strategy: framework
+app:
+  owner:
+    username: ${APP_OWNER_USERNAME:owner}
+    password: ${APP_OWNER_PASSWORD:change-me}
+  normalization:
+    auto-post-threshold: ${NORMALIZATION_AUTO_POST_THRESHOLD:0.85}
+  storage:
+    mode: ${STORAGE_MODE:local}
+    local-root: ${STORAGE_LOCAL_ROOT:./storage}
+    s3:
+      endpoint: ${S3_ENDPOINT:}
+      region: ${S3_REGION:ap-south-1}
+      bucket: ${S3_BUCKET:}
+      access-key: ${S3_ACCESS_KEY:}
+      secret-key: ${S3_SECRET_KEY:}
+  whatsapp:
+    mode: ${WHATSAPP_MODE:mock}
+    access-token: ${WHATSAPP_ACCESS_TOKEN:}
+    phone-number-id: ${WHATSAPP_PHONE_NUMBER_ID:}
+    business-account-id: ${WHATSAPP_BUSINESS_ACCOUNT_ID:}
+    verify-token: ${WHATSAPP_VERIFY_TOKEN:change-me}
+    app-secret: ${WHATSAPP_APP_SECRET:}
+  ai:
+    mode: ${AI_EXTRACTION_MODE:mock}
+    url: ${AI_EXTRACTION_URL:}
+    api-key: ${AI_API_KEY:}
