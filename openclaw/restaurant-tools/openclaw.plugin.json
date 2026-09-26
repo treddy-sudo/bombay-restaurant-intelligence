@@ -2,7 +2,7 @@
   "id": "bombay-restaurant-tools",
   "name": "Bombay Restaurant Tools",
   "description": "OpenClaw tools for verified restaurant ingestion and dashboard analytics.",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -13,12 +13,17 @@
       "textModel": { "type": "string" },
       "visionModel": { "type": "string" },
       "visionFallback": { "type": "string" },
+      "reasoningModel": { "type": "string" },
       "responseModel": { "type": "string" },
       "inboundMediaRoots": {
         "type": "array",
         "minItems": 1,
         "items": { "type": "string", "minLength": 1 }
-      }
+      },
+      "backendTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+      "backendReadRetries": { "type": "integer", "minimum": 0, "maximum": 2 },
+      "ollamaTimeoutMs": { "type": "integer", "minimum": 1000, "maximum": 300000 },
+      "ollamaMaxRetries": { "type": "integer", "minimum": 0, "maximum": 2 }
     }
   },
   "activation": { "onStartup": true },
@@ -29,7 +34,8 @@
       "restaurant_ingest_image",
       "restaurant_preview_spreadsheet",
       "restaurant_confirm_spreadsheet",
-      "restaurant_get_sales"
+      "restaurant_get_sales",
+      "restaurant_health"
     ]
   }
 }
