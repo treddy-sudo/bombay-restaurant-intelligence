@@ -36,7 +36,6 @@ require_command curl
 require_command node
 require_command npm
 require_command openclaw
-require_command ollama
 
 if have node; then
   if node -e 'const [M,m]=process.versions.node.split(".").map(Number); process.exit((M>26 || (M===26&&m>=1) || (M===24&&m>=16)) ? 0 : 1)' >/dev/null 2>&1; then
@@ -70,11 +69,36 @@ if [[ -n "$BACKEND_URL" ]]; then
 fi
 
 OLLAMA_URL="${OLLAMA_BASE_URL:-http://127.0.0.1:11434}"
+OLLAMA_AUTH_ARGS=()
+case "$OLLAMA_URL" in
+  https://ollama.com|https://ollama.com/*)
+    require_env OLLAMA_API_KEY
+    require_env OPENCLAW_OLLAMA_PROVIDER_API_KEY
+    if [[ -n "${OLLAMA_API_KEY:-}" ]]; then
+      OLLAMA_AUTH_ARGS=(-H "Authorization: Bearer ${OLLAMA_API_KEY}")
+    fi
+    ;;
+  http://127.0.0.1:*|http://localhost:*)
+    ok "Ollama is configured for local inference"
+    ;;
+  https://*)
+    if [[ -n "${OLLAMA_API_KEY:-}" ]]; then
+      OLLAMA_AUTH_ARGS=(-H "Authorization: Bearer ${OLLAMA_API_KEY}")
+    else
+      warn "Remote Ollama endpoint has no OLLAMA_API_KEY; ensure that endpoint intentionally allows unauthenticated access"
+    fi
+    ;;
+  *)
+    warn "OLLAMA_BASE_URL uses an unusual scheme/location: $OLLAMA_URL"
+    ;;
+esac
+
+OLLAMA_TAGS_JSON=""
 if have curl; then
-  if curl --fail --silent --show-error --max-time 5 "$OLLAMA_URL/api/tags" >/dev/null 2>&1; then
-    ok "Ollama is reachable at $OLLAMA_URL"
+  if OLLAMA_TAGS_JSON="$(curl --fail --silent --show-error --max-time 10 "${OLLAMA_AUTH_ARGS[@]}" "$OLLAMA_URL/api/tags" 2>/dev/null)"; then
+    ok "Ollama API is reachable at $OLLAMA_URL"
   else
-    fail "Ollama is not reachable at $OLLAMA_URL"
+    fail "Ollama API is not reachable/authenticated at $OLLAMA_URL"
   fi
 fi
 
@@ -85,13 +109,31 @@ VISION_FALLBACK="${OLLAMA_VISION_FALLBACK:-gemma4:12b}"
 REASONING_MODEL="${OLLAMA_REASONING_MODEL:-qwen3.5:27b}"
 RESPONSE_MODEL="${OLLAMA_RESPONSE_MODEL:-qwen3.5:9b}"
 
-if have ollama; then
-  INSTALLED_MODELS="$(ollama list 2>/dev/null | awk 'NR>1 {print $1}' || true)"
+if [[ -n "$OLLAMA_TAGS_JSON" ]] && have node; then
+  AVAILABLE_MODELS="$(printf '%s' "$OLLAMA_TAGS_JSON" | node -e '
+    let body="";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", chunk => body += chunk);
+    process.stdin.on("end", () => {
+      try {
+        const parsed = JSON.parse(body);
+        const names = new Set();
+        for (const model of parsed.models ?? []) {
+          if (model?.name) names.add(model.name);
+          if (model?.model) names.add(model.model);
+        }
+        process.stdout.write([...names].join("\n"));
+      } catch {
+        process.exit(1);
+      }
+    });
+  ' 2>/dev/null || true)"
+
   for model in "$ROUTER_MODEL" "$TEXT_MODEL" "$VISION_MODEL" "$VISION_FALLBACK" "$REASONING_MODEL" "$RESPONSE_MODEL"; do
-    if printf '%s\n' "$INSTALLED_MODELS" | grep -Fxq "$model"; then
-      ok "Ollama model installed: $model"
+    if printf '%s\n' "$AVAILABLE_MODELS" | grep -Fxq "$model"; then
+      ok "Ollama model available: $model"
     else
-      fail "Required Ollama model missing: $model"
+      fail "Required Ollama model unavailable: $model"
     fi
   done
 fi
