@@ -19,7 +19,7 @@ public class LocalDocumentStorageService implements DocumentStorageService {
     }
 
     @Override
-    public String store(String filename, byte[] content) {
+    public String store(String filename, String contentType, byte[] content) {
         try {
             Files.createDirectories(root);
             String safe = (filename == null ? "document" : filename).replaceAll("[^a-zA-Z0-9._-]", "_");
