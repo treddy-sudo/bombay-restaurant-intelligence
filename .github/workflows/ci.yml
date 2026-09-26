@@ -21,7 +21,17 @@ jobs:
       - name: Copy frontend into Spring Boot
         run: mkdir -p src/main/resources/static && cp -R frontend/dist/. src/main/resources/static/
       - name: Backend tests and package
-        run: mvn -B clean test package
+        shell: bash
+        run: |
+          set +e
+          mvn -B clean test package > mvn.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            echo "--- Maven diagnostic tail ---"
+            tail -n 140 mvn.log
+            exit $code
+          fi
+          tail -n 40 mvn.log
       - name: Verify secrets are not committed
         run: |
           ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|AI_API_KEY|DATABASE_PASSWORD)=[^[:space:]]+' -- ':!*.example'
