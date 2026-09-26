@@ -1,10 +1,15 @@
 package com.bombay.restaurantintelligence.integration;
 
+import com.bombay.restaurantintelligence.domain.Category;
 import com.bombay.restaurantintelligence.domain.DailyMetric;
+import com.bombay.restaurantintelligence.domain.NormalizationMapping;
 import com.bombay.restaurantintelligence.intake.IntakeAgent;
+import com.bombay.restaurantintelligence.repository.CategoryRepository;
 import com.bombay.restaurantintelligence.repository.DailyMetricRepository;
+import com.bombay.restaurantintelligence.repository.NormalizationMappingRepository;
 import com.bombay.restaurantintelligence.repository.ReviewItemRepository;
 import com.bombay.restaurantintelligence.review.ReviewService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,6 +26,14 @@ class DailyMetricFlowTest {
     @Autowired DailyMetricRepository metrics;
     @Autowired ReviewItemRepository reviews;
     @Autowired ReviewService reviewService;
+    @Autowired CategoryRepository categories;
+    @Autowired NormalizationMappingRepository mappings;
+
+    @BeforeEach
+    void seedNormalization() {
+        categories.save(new Category("VEGETABLES", "Vegetables", "PURCHASES"));
+        mappings.save(new NormalizationMapping("vegetables", "CATEGORY", "VEGETABLES", BigDecimal.ONE));
+    }
 
     @Test
     void verifiedOnlyTransactionsMaterializeAndReviewApprovalRefreshesTotals() {
