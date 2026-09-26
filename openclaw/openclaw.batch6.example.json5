@@ -52,30 +52,30 @@
   models: {
     providers: {
       ollama: {
-        baseUrl: "http://127.0.0.1:11434",
-        apiKey: "ollama-local",
+        baseUrl: "${OLLAMA_BASE_URL}",
+        apiKey: "${OPENCLAW_OLLAMA_PROVIDER_API_KEY}",
         api: "ollama",
         timeoutSeconds: 180,
         models: [
           {
-            id: "qwen3.5:9b",
-            name: "qwen3.5:9b",
+            id: "${OLLAMA_ROUTER_MODEL}",
+            name: "${OLLAMA_ROUTER_MODEL}",
             reasoning: true,
             input: ["text", "image"],
             contextTokens: 65536,
             params: { num_ctx: 65536, thinking: false, keep_alive: "15m" },
           },
           {
-            id: "gemma4:12b",
-            name: "gemma4:12b",
+            id: "${OLLAMA_VISION_FALLBACK}",
+            name: "${OLLAMA_VISION_FALLBACK}",
             reasoning: false,
             input: ["text", "image"],
             contextTokens: 32768,
             params: { num_ctx: 32768, keep_alive: "15m" },
           },
           {
-            id: "qwen3.5:27b",
-            name: "qwen3.5:27b",
+            id: "${OLLAMA_REASONING_MODEL}",
+            name: "${OLLAMA_REASONING_MODEL}",
             reasoning: true,
             input: ["text"],
             contextTokens: 65536,
@@ -89,7 +89,7 @@
   agents: {
     defaults: {
       workspace: "./openclaw/workspace",
-      model: { primary: "ollama/qwen3.5:9b" },
+      model: { primary: "ollama/${OLLAMA_ROUTER_MODEL}" },
       skills: [],
     },
   },
@@ -123,12 +123,12 @@
         config: {
           backendBaseUrl: "${OPENCLAW_BACKEND_BASE_URL}",
           ollamaBaseUrl: "${OLLAMA_BASE_URL}",
-          routerModel: "qwen3.5:9b",
-          textModel: "qwen3.5:9b",
-          visionModel: "qwen3.5:9b",
-          visionFallback: "gemma4:12b",
-          reasoningModel: "qwen3.5:27b",
-          responseModel: "qwen3.5:9b",
+          routerModel: "${OLLAMA_ROUTER_MODEL}",
+          textModel: "${OLLAMA_TEXT_MODEL}",
+          visionModel: "${OLLAMA_VISION_MODEL}",
+          visionFallback: "${OLLAMA_VISION_FALLBACK}",
+          reasoningModel: "${OLLAMA_REASONING_MODEL}",
+          responseModel: "${OLLAMA_RESPONSE_MODEL}",
           inboundMediaRoots: [
             "~/.openclaw/media",
             "~/.openclaw/workspace",
