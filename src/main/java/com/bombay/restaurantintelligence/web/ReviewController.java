@@ -1,0 +1,4 @@
+package com.bombay.restaurantintelligence.web;
+import com.bombay.restaurantintelligence.normalization.NormalizationResult; import com.bombay.restaurantintelligence.review.ReviewService; import org.springframework.web.bind.annotation.*; import java.security.Principal; import java.util.*;
+@RestController @RequestMapping("/api/reviews") public class ReviewController {private final ReviewService service;public ReviewController(ReviewService service){this.service=service;}@GetMapping public List<ReviewService.ReviewView> open(){return service.open();}@PostMapping("/{id}/approve") public NormalizationResult approve(@PathVariable UUID id,@RequestBody ReviewService.CorrectionRequest req,Principal p){return service.approve(id,req,p.getName());}@PostMapping("/{id}/reject") public void reject(@PathVariable UUID id,@RequestBody RejectRequest req,Principal p){service.reject(id,req.reason(),p.getName());}public record RejectRequest(String reason){}
+}
