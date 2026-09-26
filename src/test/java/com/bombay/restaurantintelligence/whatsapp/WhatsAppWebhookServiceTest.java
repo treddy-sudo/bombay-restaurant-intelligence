@@ -66,10 +66,10 @@ class WhatsAppWebhookServiceTest {
 
         assertThat(processed).isEqualTo(1);
         verify(messages).save(any());
+        verify(openClaw).enabled();
         verify(intake).ingestWhatsAppText(
                 "Paid Salman 4200 vegetables", "wamid.1", "919999999999");
         verify(whatsApp).sendText(eq("919999999999"), contains("Salman"));
-        verifyNoInteractions(openClaw);
     }
 
     @Test
