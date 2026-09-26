@@ -2,7 +2,7 @@
   "id": "bombay-restaurant-tools",
   "name": "Bombay Restaurant Tools",
   "description": "OpenClaw tools for verified restaurant ingestion and dashboard analytics.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -11,11 +11,18 @@
       "ollamaBaseUrl": { "type": "string" },
       "routerModel": { "type": "string" },
       "textModel": { "type": "string" },
+      "visionModel": { "type": "string" },
+      "visionFallback": { "type": "string" },
       "responseModel": { "type": "string" }
     }
   },
   "activation": { "onStartup": true },
   "contracts": {
-    "tools": ["restaurant_route_text", "restaurant_ingest_text", "restaurant_get_sales"]
+    "tools": [
+      "restaurant_route_text",
+      "restaurant_ingest_text",
+      "restaurant_ingest_image",
+      "restaurant_get_sales"
+    ]
   }
 }
