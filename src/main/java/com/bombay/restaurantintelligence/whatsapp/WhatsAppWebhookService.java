@@ -119,8 +119,9 @@ public class WhatsAppWebhookService {
             throw new DuplicateSourceException("Media already imported");
         }
 
-        String location = storage.store(media.filename(), media.bytes());
-        documents.save(new SourceDocument(media.filename(), media.contentType(), checksum, location, Instant.now()));
+        String storageContentType = UploadIngestionService.storageContentType(media.filename(), media.contentType());
+        String location = storage.store(media.filename(), storageContentType, media.bytes());
+        documents.save(new SourceDocument(media.filename(), storageContentType, checksum, location, Instant.now()));
 
         List<IntermediateBusinessRecord> records;
         String lower = media.filename().toLowerCase(Locale.ROOT);
@@ -131,7 +132,7 @@ public class WhatsAppWebhookService {
         } else if (image) {
             records = images.extract(
                     media.bytes(),
-                    media.contentType(),
+                    storageContentType,
                     media.filename(),
                     messageId,
                     sender,
@@ -139,7 +140,7 @@ public class WhatsAppWebhookService {
                     location,
                     checksum);
         } else {
-            records = ai.extract(media.bytes(), media.contentType(), media.filename(), messageId, sender)
+            records = ai.extract(media.bytes(), storageContentType, media.filename(), messageId, sender)
                     .stream()
                     .map(record -> new IntermediateBusinessRecord(
                             SourceType.WHATSAPP_DOCUMENT,
