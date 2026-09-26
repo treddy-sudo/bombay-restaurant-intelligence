@@ -13,12 +13,14 @@ type OllamaMessage = {
 export type OllamaClientOptions = {
   timeoutMs?: number;
   maxRetries?: number;
+  apiKey?: string;
   log?: StructuredLogSink;
 };
 
 export class OllamaClient {
   private readonly timeoutMs: number;
   private readonly maxRetries: number;
+  private readonly apiKey?: string;
   private readonly log: StructuredLogSink;
 
   constructor(
@@ -28,6 +30,7 @@ export class OllamaClient {
   ) {
     this.timeoutMs = options.timeoutMs ?? 120_000;
     this.maxRetries = options.maxRetries ?? 1;
+    this.apiKey = options.apiKey?.trim() || process.env.OLLAMA_API_KEY?.trim() || undefined;
     this.log = options.log ?? defaultStructuredLogSink;
   }
 
@@ -78,6 +81,7 @@ export class OllamaClient {
       try {
         const response = await withTimeout(this.timeoutMs, signal, (requestSignal) => this.fetchFn(`${this.baseUrl}/api/tags`, {
           method: "GET",
+          headers: this.requestHeaders(),
           signal: requestSignal,
         }));
         const raw = await response.text();
@@ -114,6 +118,13 @@ export class OllamaClient {
     return [];
   }
 
+  private requestHeaders(includeJson = false): Record<string, string> {
+    const headers: Record<string, string> = {};
+    if (includeJson) headers["Content-Type"] = "application/json";
+    if (this.apiKey) headers.Authorization = `Bearer ${this.apiKey}`;
+    return headers;
+  }
+
   private async chatStructured<T>(
     model: string,
     messages: OllamaMessage[],
@@ -128,7 +139,7 @@ export class OllamaClient {
       try {
         const response = await withTimeout(this.timeoutMs, callerSignal, (signal) => this.fetchFn(`${this.baseUrl}/api/chat`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: this.requestHeaders(true),
           body: JSON.stringify({
             model,
             stream: false,
