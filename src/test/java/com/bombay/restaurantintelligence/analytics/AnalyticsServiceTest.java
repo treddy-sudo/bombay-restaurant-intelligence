@@ -119,7 +119,7 @@ class AnalyticsServiceTest {
                 .multiply(new BigDecimal("100"))
                 .divide(new BigDecimal("4000.00"), 2, RoundingMode.HALF_UP);
         assertThat(data.monthOverMonth().changePercent()).isEqualByComparingTo(expectedMom);
-        assertThat(weekStart).isNotAfter(today);
+        assertThat(weekStart.isAfter(today)).isFalse();
     }
 
     private void stubTransactions(List<TransactionEntity> all) {
