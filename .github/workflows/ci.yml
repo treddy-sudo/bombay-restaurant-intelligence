@@ -28,12 +28,23 @@ jobs:
           code=$?
           if [ $code -ne 0 ]; then
             echo "--- Maven diagnostic tail ---"
-            tail -n 140 mvn.log
+            tail -n 160 mvn.log
             exit $code
           fi
-          tail -n 40 mvn.log
+          tail -n 50 mvn.log
+      - uses: actions/setup-node@v4
+        with: { node-version: '24.16.0' }
+      - name: OpenClaw plugin install
+        working-directory: openclaw/restaurant-tools
+        run: npm install --no-audit --no-fund
+      - name: OpenClaw plugin tests
+        working-directory: openclaw/restaurant-tools
+        run: npm test
+      - name: OpenClaw plugin build and manifest validation
+        working-directory: openclaw/restaurant-tools
+        run: npm run plugin:check
       - name: Verify secrets are not committed
         run: |
-          ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|AI_API_KEY|DATABASE_PASSWORD)=[^[:space:]]+' -- ':!*.example'
+          ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|AI_API_KEY|DATABASE_PASSWORD|OPENCLAW_BACKEND_SHARED_SECRET)=[^[:space:]]+' -- ':!*.example'
       - name: Docker image build
         run: docker build --tag bombay-restaurant-intelligence:ci .
