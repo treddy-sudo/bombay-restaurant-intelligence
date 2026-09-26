@@ -55,18 +55,18 @@ class OpenClawBatchOneFlowTest {
     void ollamaCandidateMustPassNormalizationAndAnalyticsRemainJavaAuthoritative() throws Exception {
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Kolkata"));
 
-        String paymentCandidate = mapper.writeValueAsString(Map.of(
-                "sourceId", "batch1-payment-1",
-                "sender", "batch1-manager",
-                "sourceType", "MANUAL_TEXT",
-                "businessDate", today.toString(),
-                "rawText", "Paid Salman 6500 vegetables",
-                "transactionType", "VENDOR_PAYMENT",
-                "category", "VEGETABLES",
-                "vendor", "Salman",
-                "amount", "6500.00",
-                "description", "Vegetable payment to Salman",
-                "confidence", 0.96));
+        String paymentCandidate = mapper.writeValueAsString(Map.ofEntries(
+                Map.entry("sourceId", "batch1-payment-1"),
+                Map.entry("sender", "batch1-manager"),
+                Map.entry("sourceType", "MANUAL_TEXT"),
+                Map.entry("businessDate", today.toString()),
+                Map.entry("rawText", "Paid Salman 6500 vegetables"),
+                Map.entry("transactionType", "VENDOR_PAYMENT"),
+                Map.entry("category", "VEGETABLES"),
+                Map.entry("vendor", "Salman"),
+                Map.entry("amount", "6500.00"),
+                Map.entry("description", "Vegetable payment to Salman"),
+                Map.entry("confidence", 0.96)));
 
         signedPost("/api/internal/v1/intake/text-candidate", paymentCandidate)
                 .andExpect(status().isOk())
