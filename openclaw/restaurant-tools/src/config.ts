@@ -8,8 +8,13 @@ export type RestaurantPluginConfig = {
   textModel?: string;
   visionModel?: string;
   visionFallback?: string;
+  reasoningModel?: string;
   responseModel?: string;
   inboundMediaRoots?: string[];
+  backendTimeoutMs?: number;
+  backendReadRetries?: number;
+  ollamaTimeoutMs?: number;
+  ollamaMaxRetries?: number;
 };
 
 export type RuntimeConfig = {
@@ -20,8 +25,13 @@ export type RuntimeConfig = {
   textModel: string;
   visionModel: string;
   visionFallback: string;
+  reasoningModel: string;
   responseModel: string;
   inboundMediaRoots: string[];
+  backendTimeoutMs: number;
+  backendReadRetries: number;
+  ollamaTimeoutMs: number;
+  ollamaMaxRetries: number;
 };
 
 function expandRoot(value: string): string {
@@ -47,6 +57,12 @@ function resolveInboundMediaRoots(config: RestaurantPluginConfig): string[] {
   return [...new Set(configured.map(expandRoot).filter(Boolean))];
 }
 
+function boundedInteger(raw: string | number | undefined, fallback: number, min: number, max: number): number {
+  const parsed = typeof raw === "number" ? raw : Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(parsed)));
+}
+
 export function resolveRuntimeConfig(config: RestaurantPluginConfig): RuntimeConfig {
   const sharedSecret = (process.env.OPENCLAW_BACKEND_SHARED_SECRET ?? "").trim();
   if (!sharedSecret) {
@@ -61,7 +77,12 @@ export function resolveRuntimeConfig(config: RestaurantPluginConfig): RuntimeCon
     textModel: process.env.OLLAMA_TEXT_MODEL ?? config.textModel ?? "qwen3.5:9b",
     visionModel: process.env.OLLAMA_VISION_MODEL ?? config.visionModel ?? "qwen3.5:9b",
     visionFallback: process.env.OLLAMA_VISION_FALLBACK ?? config.visionFallback ?? "gemma4:12b",
+    reasoningModel: process.env.OLLAMA_REASONING_MODEL ?? config.reasoningModel ?? "qwen3.5:27b",
     responseModel: process.env.OLLAMA_RESPONSE_MODEL ?? config.responseModel ?? "qwen3.5:9b",
     inboundMediaRoots: resolveInboundMediaRoots(config),
+    backendTimeoutMs: boundedInteger(process.env.OPENCLAW_BACKEND_TIMEOUT_MS ?? config.backendTimeoutMs, 15_000, 1_000, 300_000),
+    backendReadRetries: boundedInteger(process.env.OPENCLAW_BACKEND_READ_RETRIES ?? config.backendReadRetries, 1, 0, 2),
+    ollamaTimeoutMs: boundedInteger(process.env.OLLAMA_REQUEST_TIMEOUT_MS ?? config.ollamaTimeoutMs, 120_000, 1_000, 300_000),
+    ollamaMaxRetries: boundedInteger(process.env.OLLAMA_MAX_RETRIES ?? config.ollamaMaxRetries, 1, 0, 2),
   };
 }
