@@ -30,7 +30,7 @@ export class OllamaClient {
   ) {
     this.timeoutMs = options.timeoutMs ?? 120_000;
     this.maxRetries = options.maxRetries ?? 1;
-    this.apiKey = options.apiKey?.trim() || undefined;
+    this.apiKey = options.apiKey?.trim() || process.env.OLLAMA_API_KEY?.trim() || undefined;
     this.log = options.log ?? defaultStructuredLogSink;
   }
 
