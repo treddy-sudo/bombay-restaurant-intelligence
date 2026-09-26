@@ -79,7 +79,8 @@ public class UploadIngestionService {
                 throw new DuplicateSourceException("This file has already been uploaded");
             }
 
-            String location = storage.store(safeFilename, bytes);
+            String storageContentType = storageContentType(safeFilename, contentType);
+            String location = storage.store(safeFilename, storageContentType, bytes);
             String lower = safeFilename.toLowerCase(Locale.ROOT);
             List<IntermediateBusinessRecord> records;
 
@@ -90,7 +91,7 @@ public class UploadIngestionService {
             } else if (isImage(contentType, lower)) {
                 records = images.extract(
                         bytes,
-                        contentType,
+                        storageContentType,
                         safeFilename,
                         checksum,
                         null,
@@ -151,6 +152,21 @@ public class UploadIngestionService {
 
     private static boolean isImage(String type, String lower) {
         return (type != null && type.startsWith("image/")) || lower.matches(".*\\.(png|jpg|jpeg|webp)$");
+    }
+
+    public static String storageContentType(String filename, String contentType) {
+        if (contentType != null && !contentType.isBlank() && !"application/octet-stream".equalsIgnoreCase(contentType)) {
+            return contentType.trim().toLowerCase(Locale.ROOT);
+        }
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".csv")) return "text/csv";
+        if (lower.endsWith(".xls")) return "application/vnd.ms-excel";
+        if (lower.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        return "application/octet-stream";
     }
 
     public static String sha256(byte[] bytes) {

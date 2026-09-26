@@ -36,10 +36,13 @@ public class S3CompatibleDocumentStorageService implements DocumentStorageServic
     }
 
     @Override
-    public String store(String filename, byte[] content) {
+    public String store(String filename, String contentType, byte[] content) {
         String safe = (filename == null ? "document" : filename).replaceAll("[^a-zA-Z0-9._-]", "_");
         String key = "documents/" + UUID.randomUUID() + "-" + safe;
-        client.putObject(PutObjectRequest.builder().bucket(bucket).key(key).build(), RequestBody.fromBytes(content));
+        String type = contentType == null || contentType.isBlank() ? "application/octet-stream" : contentType.trim();
+        client.putObject(
+                PutObjectRequest.builder().bucket(bucket).key(key).contentType(type).build(),
+                RequestBody.fromBytes(content));
         return "s3://" + bucket + "/" + key;
     }
 

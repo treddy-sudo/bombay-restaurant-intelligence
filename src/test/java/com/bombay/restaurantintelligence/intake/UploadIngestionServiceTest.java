@@ -43,4 +43,20 @@ class UploadIngestionServiceTest {
         assertThat(UploadIngestionService.sha256("abc".getBytes()))
                 .isEqualTo("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
     }
+
+    @Test
+    void storageContentTypeUsesExtensionWhenUpstreamTypeIsGeneric() {
+        assertThat(UploadIngestionService.storageContentType("daily-sales.xlsx", "application/octet-stream"))
+                .isEqualTo("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        assertThat(UploadIngestionService.storageContentType("receipt.jpg", null))
+                .isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void storageContentTypePreservesSpecificTypeAndFallsBackSafely() {
+        assertThat(UploadIngestionService.storageContentType("sales.csv", "text/csv"))
+                .isEqualTo("text/csv");
+        assertThat(UploadIngestionService.storageContentType("unknown.bin", null))
+                .isEqualTo("application/octet-stream");
+    }
 }

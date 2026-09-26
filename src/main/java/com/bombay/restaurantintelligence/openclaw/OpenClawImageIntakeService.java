@@ -78,7 +78,7 @@ public class OpenClawImageIntakeService {
         }
 
         String safeFilename = sanitizeFilename(request.filename());
-        String location = storage.store(safeFilename, bytes);
+        String location = storage.store(safeFilename, contentType, bytes);
         documents.save(new SourceDocument(safeFilename, contentType, checksum, location, Instant.now()));
 
         List<NormalizationResult> results = new ArrayList<>(request.records().size());

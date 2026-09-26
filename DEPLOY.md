@@ -1,81 +1,108 @@
-# Deployment — Render + Meta WhatsApp
+# Deployment — Render + Supabase + OpenClaw WhatsApp
 
-## Render topology
+## Production topology
 
-Production uses one web service plus one Render PostgreSQL database in **Singapore**. The repository includes a multi-stage `Dockerfile` that:
+Production uses:
 
-1. builds React with Node 22,
-2. copies `frontend/dist` into Spring Boot static resources,
-3. runs Maven tests/package with Java 21,
-4. runs one Java 21 service.
+- **Render Singapore** for the Spring Boot backend and bundled React dashboard.
+- **Supabase Singapore (`ap-southeast-1`)** for PostgreSQL and private document storage.
+- A separate persistent **OpenClaw + Ollama host** for the dedicated WhatsApp session and local Ollama models.
 
 Health check: `/actuator/health`.
 
-The current `render.yaml` is intentionally configured for a **free validation web service** and references the existing Render database named `bombay-restaurant-intelligence-db`. It does not define a second database, so applying the Blueprint reuses the existing database and obtains host/port/database/user/password through Render-managed `fromDatabase` references. No database password belongs in GitHub or in this document.
+Spring Boot remains the only application component allowed to write authoritative accounting data. OpenClaw and Ollama call signed Spring APIs and never connect directly to PostgreSQL or Supabase Storage.
 
-For production WhatsApp webhook reliability, upgrade the web service to an always-on paid plan after validation. The existing free Render Postgres instance is also suitable only for validation; select an appropriate persistent paid Postgres plan before relying on it for production records. Do not change plans until the account owner has explicitly approved the associated charges.
+## Supabase database
 
-## Initial Blueprint deployment
+Flyway remains the authority for the restaurant business schema. On the first connection to an empty Supabase database, Spring applies the repository migrations in `src/main/resources/db/migration`.
 
-1. In the Render Dashboard choose **New → Blueprint**.
-2. Select `treddy-sudo/bombay-restaurant-intelligence` and the `main` branch.
-3. Render will read the repository-root `render.yaml`.
-4. Confirm the existing database reference `bombay-restaurant-intelligence-db`.
-5. Enter a strong value for `APP_OWNER_PASSWORD` when Render prompts for the `sync: false` variable. The initial username is `owner` and can be changed later in the service environment settings.
-6. Apply the Blueprint.
-7. Wait for the Docker build and deploy to complete, then verify `/actuator/health` returns `UP`.
-8. Sign in to the dashboard with the owner credentials and perform the manual text smoke test `Paid Salman 6500 for vegetables`.
+Business tables in the exposed `public` schema have RLS enabled, and the Supabase `anon` and `authenticated` roles have table privileges revoked. Do not add permissive Data API policies for these accounting tables. The dashboard uses Spring APIs rather than querying Supabase directly.
 
-The GitHub CI workflow independently builds the React production bundle, runs all Maven tests/package, scans for committed secrets, and builds the same multi-stage Docker image used by Render.
+### Render database connection
+
+Supabase direct PostgreSQL endpoints are IPv6 by default. For the persistent Render Spring backend, use the Supabase **shared pooler in session mode**.
+
+In Supabase, open **Connect → Session pooler** and configure these Render environment variables from that connection information:
+
+- `DATABASE_HOST` — Supavisor session-pooler host
+- `DATABASE_PORT=5432`
+- `DATABASE_NAME=postgres`
+- `DATABASE_USERNAME` — full Supavisor username, normally `postgres.<project-ref>`
+- `DATABASE_PASSWORD` — Supabase database password
+
+Do not use transaction-pooler port `6543` for the long-running Spring/JPA service unless it is deliberately reconfigured and tested for transaction pooling. Never commit the database password or connection string.
+
+## Supabase private document storage
+
+Production source documents live in the private bucket:
+
+```text
+restaurant-documents
+```
+
+The bucket is private, has a 20 MB per-object limit, and is restricted to application-supported image, PDF, CSV, Excel and generic binary MIME types.
+
+Spring uses Supabase Storage's S3-compatible server-side endpoint through the existing `S3CompatibleDocumentStorageService`. Generate a dedicated S3 access-key pair in **Supabase → Storage → S3 Configuration** and configure only the Render server with:
+
+- `STORAGE_MODE=s3`
+- `S3_ENDPOINT=https://<project-ref>.storage.supabase.co/storage/v1/s3`
+- `S3_REGION=ap-southeast-1`
+- `S3_BUCKET=restaurant-documents`
+- `S3_ACCESS_KEY`
+- `S3_SECRET_KEY`
+
+Supabase S3 access keys bypass Storage RLS and must never be exposed to React, OpenClaw, Ollama, WhatsApp, or source control. The database stores object locations/checksums and transaction references; file bytes remain in private Storage.
+
+## Render service
+
+The Render web service deploys from `main` in Singapore. Keep the existing Render PostgreSQL database available as a rollback source until the Supabase cutover and data verification are complete.
+
+Move the Render web service off the free validation plan before relying on it for production availability. Do not delete the old Render database until data migration, application smoke tests, and rollback verification have passed.
 
 ## Required environment variables
 
 ### Core
 
-- `DATABASE_HOST` — supplied by Render from the existing database
-- `DATABASE_PORT` — supplied by Render from the existing database
-- `DATABASE_NAME` — supplied by Render from the existing database
-- `DATABASE_USERNAME` — supplied by Render from the existing database
-- `DATABASE_PASSWORD` — supplied by Render from the existing database
+- `DATABASE_HOST`
+- `DATABASE_PORT`
+- `DATABASE_NAME`
+- `DATABASE_USERNAME`
+- `DATABASE_PASSWORD`
 - `APP_OWNER_USERNAME`
 - `APP_OWNER_PASSWORD`
 - `NORMALIZATION_AUTO_POST_THRESHOLD` (default `0.85`)
-
-### WhatsApp
-
-- `WHATSAPP_MODE=mock|meta`
-- `WHATSAPP_ACCESS_TOKEN`
-- `WHATSAPP_PHONE_NUMBER_ID`
-- `WHATSAPP_BUSINESS_ACCOUNT_ID`
-- `WHATSAPP_VERIFY_TOKEN`
-- `WHATSAPP_APP_SECRET` (recommended; enables webhook signature validation)
-- optional `WHATSAPP_GRAPH_BASE_URL` to update Meta Graph API version without code changes
-
-### AI extraction
-
-- `AI_EXTRACTION_MODE=mock|http`
-- `AI_EXTRACTION_URL`
-- `AI_API_KEY`
+- `OPENCLAW_BACKEND_SHARED_SECRET`
 
 ### Document storage
 
-Default local storage:
+Local development:
 
 - `STORAGE_MODE=local`
 - `STORAGE_LOCAL_ROOT=./storage`
 
-S3-compatible mode:
+Supabase production:
 
 - `STORAGE_MODE=s3`
 - `S3_ENDPOINT`
-- `S3_REGION`
-- `S3_BUCKET`
+- `S3_REGION=ap-southeast-1`
+- `S3_BUCKET=restaurant-documents`
 - `S3_ACCESS_KEY`
 - `S3_SECRET_KEY`
 
-Local Render filesystem storage should be treated as temporary. Configure S3-compatible storage before relying on uploaded source documents as durable production evidence.
+### OpenClaw / Ollama
 
-Never commit any real value from the secret variables above.
+The persistent OpenClaw host uses:
+
+- `OPENCLAW_GATEWAY_TOKEN`
+- `OPENCLAW_BACKEND_BASE_URL=https://bombay-restaurant-intelligence.onrender.com`
+- `OPENCLAW_BACKEND_SHARED_SECRET` — same shared secret as Spring
+- `OLLAMA_BASE_URL=http://127.0.0.1:11434`
+
+See `OPENCLAW_HOST_SETUP.md` for model installation, plugin setup, WhatsApp QR login, allowlists, readiness checks, and final acceptance tests.
+
+### Legacy Meta webhook adapter
+
+The repository still contains the Meta WhatsApp webhook adapter for compatibility/testing. The intended production group workflow uses the dedicated OpenClaw WhatsApp channel instead of making the Meta webhook adapter the accounting boundary.
 
 ## Render build/start
 
@@ -91,25 +118,21 @@ Native-equivalent build:
 cd frontend && npm install --no-audit --no-fund && npm run build && cd .. && rm -rf src/main/resources/static && mkdir -p src/main/resources/static && cp -R frontend/dist/. src/main/resources/static/ && mvn -B clean test package
 ```
 
-Start command:
+## Controlled Supabase cutover
 
-```text
-java -Dserver.port=$PORT -jar target/restaurant-intelligence-0.1.0.jar
-```
+Do not switch live production credentials until the Supabase branch has passed CI.
 
-## Meta account steps after app deployment
-
-1. Create/select the Meta app and WhatsApp Business account.
-2. Attach the production business phone number.
-3. Generate/configure a production access token and put it only in Render environment variables.
-4. Set callback URL to `https://YOUR_RENDER_HOST/api/whatsapp/webhook`.
-5. Set Meta's verify token to the exact `WHATSAPP_VERIFY_TOKEN` stored in Render.
-6. Subscribe the WhatsApp webhook to `messages` events.
-7. Configure `WHATSAPP_APP_SECRET` so inbound webhook signatures are validated.
-8. Switch `WHATSAPP_MODE` from `mock` to `meta` and deploy.
-9. Send `Paid Salman 4200 vegetables` and verify the acknowledgement plus dashboard update.
-10. If the Meta account later receives Groups API access, add group-event parsing only at the WhatsApp adapter; no downstream agent/schema changes are required.
+1. Keep the existing Render database untouched as rollback.
+2. Confirm the Supabase Singapore project and private `restaurant-documents` bucket are healthy.
+3. Obtain the Supabase session-pooler connection information and server-side S3 credentials directly from Supabase.
+4. Export/copy any existing records that must be retained from the old Render database using a controlled migration path.
+5. Point a controlled Spring deployment at Supabase so Flyway applies and validates the schema.
+6. Verify table counts and critical records in Supabase before changing the live service.
+7. Configure the live Render service with the Supabase session-pooler variables and S3 variables.
+8. Verify `/actuator/health` and signed `restaurant_health`.
+9. Test text ingestion, image storage, CSV/XLS/XLSX, duplicate handling, review-required behavior, analytics, and receipt/file retrieval.
+10. Keep the old Render database through the rollback window; only then retire it.
 
 ## Historical backfill
 
-Do not block launch on history. Live data begins immediately after deployment. Future TXT/ZIP WhatsApp exports, historical Excel reports, and Zomato/Swiggy settlements must feed the same `IntermediateBusinessRecord -> NormalizationAgent -> transactions` pipeline and preserve original business dates.
+Do not block launch on historical data. TXT/ZIP WhatsApp exports, historical Excel reports, and Zomato/Swiggy settlements must feed the same `IntermediateBusinessRecord -> NormalizationAgent -> transactions` pipeline and preserve original business dates.
