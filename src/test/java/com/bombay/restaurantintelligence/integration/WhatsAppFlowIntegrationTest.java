@@ -55,7 +55,7 @@ class WhatsAppFlowIntegrationTest {
 
         mockMvc.perform(get("/api/whatsapp/webhook")
                         .param("hub.mode", "subscribe")
-                        .param("hub.verify_token", "test-verify-token")
+                        .param("hub.verify_token", "verify-me")
                         .param("hub.challenge", "challenge-123"))
                 .andExpect(status().isOk())
                 .andExpect(content().string("challenge-123"));
