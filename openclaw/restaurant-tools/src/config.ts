@@ -3,6 +3,8 @@ export type RestaurantPluginConfig = {
   ollamaBaseUrl?: string;
   routerModel?: string;
   textModel?: string;
+  visionModel?: string;
+  visionFallback?: string;
   responseModel?: string;
 };
 
@@ -12,6 +14,8 @@ export type RuntimeConfig = {
   ollamaBaseUrl: string;
   routerModel: string;
   textModel: string;
+  visionModel: string;
+  visionFallback: string;
   responseModel: string;
 };
 
@@ -27,6 +31,8 @@ export function resolveRuntimeConfig(config: RestaurantPluginConfig): RuntimeCon
     ollamaBaseUrl: (process.env.OLLAMA_BASE_URL ?? config.ollamaBaseUrl ?? "http://127.0.0.1:11434").replace(/\/+$/, ""),
     routerModel: process.env.OLLAMA_ROUTER_MODEL ?? config.routerModel ?? "qwen3.5:9b",
     textModel: process.env.OLLAMA_TEXT_MODEL ?? config.textModel ?? "qwen3.5:9b",
+    visionModel: process.env.OLLAMA_VISION_MODEL ?? config.visionModel ?? "qwen3.5:9b",
+    visionFallback: process.env.OLLAMA_VISION_FALLBACK ?? config.visionFallback ?? "gemma4:12b",
     responseModel: process.env.OLLAMA_RESPONSE_MODEL ?? config.responseModel ?? "qwen3.5:9b",
   };
 }
