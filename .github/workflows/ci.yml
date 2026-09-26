@@ -35,3 +35,5 @@ jobs:
       - name: Verify secrets are not committed
         run: |
           ! git grep -nE '(WHATSAPP_ACCESS_TOKEN|AI_API_KEY|DATABASE_PASSWORD)=[^[:space:]]+' -- ':!*.example'
+      - name: Docker image build
+        run: docker build --tag bombay-restaurant-intelligence:ci .
