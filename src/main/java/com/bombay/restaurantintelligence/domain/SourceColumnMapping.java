@@ -1,3 +1,40 @@
 package com.bombay.restaurantintelligence.domain;
-import jakarta.persistence.*; import java.time.Instant; import java.util.UUID;
-@Entity @Table(name="source_column_mappings") public class SourceColumnMapping {@Id @GeneratedValue(strategy=GenerationType.UUID) private UUID id;@Column(name="source_key",nullable=false)private String sourceKey;@Column(name="source_column",nullable=false)private String sourceColumn;@Column(name="canonical_field",nullable=false)private String canonicalField;@Column(name="created_at",nullable=false)private Instant createdAt=Instant.now();@Column(name="updated_at",nullable=false)private Instant updatedAt=Instant.now();protected SourceColumnMapping(){}public SourceColumnMapping(String sourceKey,String sourceColumn,String canonicalField){this.sourceKey=sourceKey;this.sourceColumn=sourceColumn;this.canonicalField=canonicalField;}public UUID getId(){return id;}public String getSourceKey(){return sourceKey;}public String getSourceColumn(){return sourceColumn;}public String getCanonicalField(){return canonicalField;}}
+
+import jakarta.persistence.*;
+import java.time.Instant;
+import java.util.UUID;
+
+@Entity
+@Table(name="source_column_mappings")
+public class SourceColumnMapping {
+    @Id @GeneratedValue(strategy=GenerationType.UUID)
+    private UUID id;
+    @Column(name="source_key",nullable=false)
+    private String sourceKey;
+    @Column(name="source_column",nullable=false)
+    private String sourceColumn;
+    @Column(name="canonical_field",nullable=false)
+    private String canonicalField;
+    @Column(name="created_at",nullable=false)
+    private Instant createdAt=Instant.now();
+    @Column(name="updated_at",nullable=false)
+    private Instant updatedAt=Instant.now();
+
+    protected SourceColumnMapping(){}
+
+    public SourceColumnMapping(String sourceKey,String sourceColumn,String canonicalField){
+        this.sourceKey=sourceKey;
+        this.sourceColumn=sourceColumn;
+        this.canonicalField=canonicalField;
+    }
+
+    public void updateCanonicalField(String canonicalField){
+        this.canonicalField=canonicalField;
+        this.updatedAt=Instant.now();
+    }
+
+    public UUID getId(){return id;}
+    public String getSourceKey(){return sourceKey;}
+    public String getSourceColumn(){return sourceColumn;}
+    public String getCanonicalField(){return canonicalField;}
+}
