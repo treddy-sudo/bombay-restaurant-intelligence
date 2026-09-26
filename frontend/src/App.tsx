@@ -22,7 +22,7 @@ export function App(){
  const selectFilter=(v:string)=>{setFilter(v);if(v!=='custom')setRange(rangeFor(v));};
  const login=async(e:FormEvent<HTMLFormElement>)=>{e.preventDefault();const fd=new FormData(e.currentTarget);const token='Basic '+btoa(`${fd.get('username')}:${fd.get('password')}`);try{const r=await fetch('/api/auth/check',{headers:{Authorization:token}});if(!r.ok)throw new Error();sessionStorage.setItem('bri-auth',token);setAuth(token);setLoginError('');}catch{setLoginError('Invalid owner credentials')}};
  if(!auth)return <Login onSubmit={login} error={loginError}/>;
- const channel=Object.entries(dashboard?.onlineVsOffline||{}).map(([name,value])=>({name,value})); const aggregators=Object.entries(dashboard?.zomatoVsSwiggy||{}).map(([name,value])=>({name,value}));
+ const channel=Object.entries(dashboard?.onlineVsOffline ?? {}).map(([name,value])=>({name,value:Number(value)})); const aggregators=Object.entries(dashboard?.zomatoVsSwiggy ?? {}).map(([name,value])=>({name,value:Number(value)}));
  return <div className="app-shell"><header><div><p className="eyebrow">PRIVATE OWNER CONSOLE</p><h1>Bombay Restaurant Intelligence</h1><p className="subtle">{dashboard?.dataAvailableFrom?`Data available from ${dashboard.dataAvailableFrom}`:'No verified transactions yet'}</p></div><div className="header-actions"><span className={loading?'status busy':'status'}>{loading?'Refreshing…':'Live'}</span><button className="ghost" onClick={()=>{sessionStorage.removeItem('bri-auth');setAuth('')}}>Sign out</button></div></header>
  <main>
   {notice&&<div className="notice" onClick={()=>setNotice('')}>{notice}</div>}
@@ -40,7 +40,34 @@ function Login({onSubmit,error}:{onSubmit:(e:FormEvent<HTMLFormElement>)=>void;e
 function CardGrid({summary}:{summary?:Summary}){return <div className="cards"><Metric label="Total Sales" value={summary?.sales}/><Metric label="Total Expenses" value={summary?.expenses}/><Metric label="Vendor Payments" value={summary?.vendorPayments}/><Metric label="Online Sales" value={summary?.onlineSales}/><Metric label="Offline Sales" value={summary?.offlineSales}/></div>}
 function Metric({label,value}:{label:string;value?:number}){return <article className="metric"><span>{label}</span><strong>{money.format(value||0)}</strong></article>}
 function ManualEntry({api,onDone}:{api:ApiFn;onDone:(m:string)=>void}){const [text,setText]=useState('Paid Salman 6500 for vegetables');const [busy,setBusy]=useState(false);return <form className="manual" onSubmit={async e=>{e.preventDefault();setBusy(true);try{const r=await api<{message:string;status:string}>('/api/intake/manual-text',{method:'POST',body:JSON.stringify({text})});onDone(`${r.status}: ${r.message}`);setText('')}catch(e){onDone((e as Error).message)}finally{setBusy(false)}}}><input value={text} onChange={e=>setText(e.target.value)} placeholder="Paid Salman 6500 vegetables" required/><button className="primary" disabled={busy}>{busy?'Recording…':'Record'}</button></form>}
-function FileUpload({api,onDone}:{api:ApiFn;onDone:(m:string)=>void}){const [file,setFile]=useState<File|null>(null);const [preview,setPreview]=useState<{jobId:string;recordCount:number;filename:string}|null>(null);return <div className="upload"><input type="file" accept=".xls,.xlsx,.csv,image/*" onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null)}}/><button className="ghost" disabled={!file} onClick={async()=>{if(!file)return;const fd=new FormData();fd.append('file',file);try{setPreview(await api('/api/intake/uploads/preview',{method:'POST',body:fd}) as {jobId:string;recordCount:number;filename:string})}catch(e){onDone((e as Error).message)}}>Preview</button>{preview&&<><span>{preview.recordCount} candidate records</span><button className="primary" onClick={async()=>{try{const r=await api<{processed:number}>(`/api/intake/uploads/${preview.jobId}/confirm`,{method:'POST'});onDone(`Imported ${r.processed} records`);setPreview(null);setFile(null)}catch(e){onDone((e as Error).message)}}>Confirm import</button></>}</div>}
+function FileUpload({api,onDone}:{api:ApiFn;onDone:(m:string)=>void}) {
+ const [file,setFile]=useState<File|null>(null);
+ const [preview,setPreview]=useState<{jobId:string;recordCount:number;filename:string}|null>(null);
+ const previewFile=async()=>{
+  if(!file)return;
+  const fd=new FormData(); fd.append('file',file);
+  try {
+   const result=await api<{jobId:string;recordCount:number;filename:string}>('/api/intake/uploads/preview',{method:'POST',body:fd});
+   setPreview(result);
+  } catch(e){onDone((e as Error).message);}
+ };
+ const confirmImport=async()=>{
+  if(!preview)return;
+  try {
+   const result=await api<{processed:number}>(`/api/intake/uploads/${preview.jobId}/confirm`,{method:'POST'});
+   onDone(`Imported ${result.processed} records`); setPreview(null); setFile(null);
+  } catch(e){onDone((e as Error).message);}
+ };
+ return <div className="upload">
+  <input type="file" accept=".xls,.xlsx,.csv,image/*" onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null)}}/>
+  <button className="ghost" disabled={!file} onClick={previewFile}>Preview</button>
+  {preview&&<>
+   <span>{preview.recordCount} candidate records</span>
+   <button className="primary" onClick={confirmImport}>Confirm import</button>
+  </>}
+ </div>;
+}
+
 function ChartCard({title,children}:{title:string;children:React.ReactNode}){return <article className="chart-card"><h3>{title}</h3>{children}</article>}
 function MiniPie({title,data}:{title:string;data:{name:string;value:number}[]}){return <div className="mini-pie"><h4>{title}</h4><ResponsiveContainer width="100%" height={220}><PieChart><Pie data={data} dataKey="value" nameKey="name" outerRadius={72} label/><Tooltip formatter={v=>money.format(Number(v))}/></PieChart></ResponsiveContainer></div>}
 function Panel({title,children}:{title:string;children:React.ReactNode}){return <article className="panel"><div className="panel-head"><h3>{title}</h3></div>{children}</article>}
