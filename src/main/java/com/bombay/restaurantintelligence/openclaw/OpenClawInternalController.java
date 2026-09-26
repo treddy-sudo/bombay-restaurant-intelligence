@@ -27,12 +27,17 @@ import java.util.Map;
 @RequestMapping("/api/internal/v1")
 public class OpenClawInternalController {
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Kolkata");
+
     private final IntakeAgent intake;
     private final AnalyticsAgent analytics;
+    private final OpenClawImageIntakeService imageIntake;
 
-    public OpenClawInternalController(IntakeAgent intake, AnalyticsAgent analytics) {
+    public OpenClawInternalController(IntakeAgent intake,
+                                      AnalyticsAgent analytics,
+                                      OpenClawImageIntakeService imageIntake) {
         this.intake = intake;
         this.analytics = analytics;
+        this.imageIntake = imageIntake;
     }
 
     @PostMapping("/intake/text-candidate")
@@ -65,6 +70,12 @@ public class OpenClawInternalController {
         return intake.ingest(candidate);
     }
 
+    @PostMapping("/intake/image-candidates")
+    public OpenClawImageIntakeService.ImageIngestionResponse ingestImageCandidates(
+            @Valid @RequestBody OpenClawImageCandidateRequest request) {
+        return imageIntake.ingest(request);
+    }
+
     @GetMapping("/analytics/query")
     public AnalyticsAnswer query(@RequestParam DashboardIntent intent) {
         return switch (intent) {
@@ -77,7 +88,9 @@ public class OpenClawInternalController {
     }
 
     private static void putIfPresent(Map<String, String> fields, String key, String value) {
-        if (value != null && !value.isBlank()) fields.put(key, value.trim());
+        if (value != null && !value.isBlank()) {
+            fields.put(key, value.trim());
+        }
     }
 
     public record TextCandidateRequest(
