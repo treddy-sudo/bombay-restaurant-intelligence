@@ -45,6 +45,39 @@ export type ImageCandidateRequest = {
   records: ImageCandidateRecord[];
 };
 
+export type SpreadsheetContentType =
+  | "text/csv"
+  | "application/csv"
+  | "application/vnd.ms-excel"
+  | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+export type SpreadsheetPreviewRequest = {
+  filename: string;
+  contentType: SpreadsheetContentType;
+  fileBase64: string;
+};
+
+export type SpreadsheetPreviewRecord = {
+  sourceType: "EXCEL" | "CSV";
+  sourceId: string;
+  businessDate: string;
+  sender?: string | null;
+  fields: Record<string, string>;
+  confidence: number;
+  rawText?: string | null;
+  sourceFilename?: string | null;
+  originalFileLocation?: string | null;
+  fileChecksum?: string | null;
+};
+
+export type SpreadsheetPreviewResponse = {
+  jobId: string;
+  filename: string;
+  checksum: string;
+  recordCount: number;
+  records: SpreadsheetPreviewRecord[];
+};
+
 export type NormalizationResult = {
   id: string;
   status: string;
@@ -61,6 +94,12 @@ export type NormalizationResult = {
 export type ImageIngestionResponse = {
   checksum: string;
   documentType?: string | null;
+  processed: number;
+  results: NormalizationResult[];
+};
+
+export type SpreadsheetConfirmResponse = {
+  jobId: string;
   processed: number;
   results: NormalizationResult[];
 };
@@ -89,6 +128,14 @@ export class SpringBackendClient {
 
   ingestImageCandidates(candidate: ImageCandidateRequest, signal?: AbortSignal): Promise<ImageIngestionResponse> {
     return this.request("POST", "/api/internal/v1/intake/image-candidates", candidate, signal);
+  }
+
+  previewSpreadsheet(request: SpreadsheetPreviewRequest, signal?: AbortSignal): Promise<SpreadsheetPreviewResponse> {
+    return this.request("POST", "/api/internal/v1/intake/spreadsheets/preview", request, signal);
+  }
+
+  confirmSpreadsheet(jobId: string, signal?: AbortSignal): Promise<SpreadsheetConfirmResponse> {
+    return this.request("POST", `/api/internal/v1/intake/spreadsheets/${encodeURIComponent(jobId)}/confirm`, undefined, signal);
   }
 
   queryTodaySales(signal?: AbortSignal): Promise<AnalyticsAnswer> {
