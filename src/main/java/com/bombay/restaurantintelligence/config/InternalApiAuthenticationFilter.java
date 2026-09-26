@@ -19,6 +19,8 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class InternalApiAuthenticationFilter extends OncePerRequestFilter {
     public static final String TIMESTAMP_HEADER = "X-Restaurant-Timestamp";
@@ -27,10 +29,18 @@ public class InternalApiAuthenticationFilter extends OncePerRequestFilter {
     private static final long MAX_SKEW_SECONDS = 300;
 
     private final byte[] secret;
+    private final int maxRequestsPerMinute;
     private final ConcurrentHashMap<String, Long> replayGuard = new ConcurrentHashMap<>();
+    private final AtomicLong rateWindowMinute = new AtomicLong(-1);
+    private final AtomicInteger rateWindowCount = new AtomicInteger();
 
     public InternalApiAuthenticationFilter(String secret) {
+        this(secret, 120);
+    }
+
+    public InternalApiAuthenticationFilter(String secret, int maxRequestsPerMinute) {
         this.secret = secret == null ? new byte[0] : secret.getBytes(StandardCharsets.UTF_8);
+        this.maxRequestsPerMinute = Math.max(1, maxRequestsPerMinute);
     }
 
     @Override
@@ -81,6 +91,12 @@ public class InternalApiAuthenticationFilter extends OncePerRequestFilter {
             return;
         }
 
+        if (rateLimited(now)) {
+            response.setHeader("Retry-After", "60");
+            reject(response, 429, "Internal API rate limit exceeded");
+            return;
+        }
+
         replayGuard.entrySet().removeIf(entry -> entry.getValue() < now - MAX_SKEW_SECONDS);
         if (replayGuard.putIfAbsent(requestId, now) != null) {
             reject(response, HttpServletResponse.SC_UNAUTHORIZED, "Replayed internal API request");
@@ -89,6 +105,15 @@ public class InternalApiAuthenticationFilter extends OncePerRequestFilter {
 
         request.setAttribute("restaurantRequestId", requestId);
         filterChain.doFilter(wrapped, response);
+    }
+
+    private boolean rateLimited(long epochSeconds) {
+        long minute = epochSeconds / 60;
+        long observed = rateWindowMinute.get();
+        if (observed != minute && rateWindowMinute.compareAndSet(observed, minute)) {
+            rateWindowCount.set(0);
+        }
+        return rateWindowCount.incrementAndGet() > maxRequestsPerMinute;
     }
 
     private String hmac(String canonical) {
