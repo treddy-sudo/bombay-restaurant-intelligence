@@ -2,7 +2,7 @@ services:
   - type: web
     name: bombay-restaurant-intelligence
     runtime: docker
-    plan: starter
+    plan: free
     region: singapore
     dockerfilePath: ./Dockerfile
     healthCheckPath: /actuator/health
@@ -18,16 +18,14 @@ services:
       - key: DATABASE_PASSWORD
         fromDatabase: { name: bombay-restaurant-intelligence-db, property: password }
       - key: APP_OWNER_USERNAME
-        sync: false
+        value: owner
       - key: APP_OWNER_PASSWORD
         sync: false
       - key: WHATSAPP_MODE
         value: mock
       - key: AI_EXTRACTION_MODE
         value: mock
-
-databases:
-  - name: bombay-restaurant-intelligence-db
-    plan: basic-256mb
-    region: singapore
-    databaseName: bombay_restaurant_intelligence
+      - key: STORAGE_MODE
+        value: local
+      - key: NORMALIZATION_AUTO_POST_THRESHOLD
+        value: "0.85"
