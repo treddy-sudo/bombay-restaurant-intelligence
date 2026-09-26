@@ -7,6 +7,8 @@ type Transaction={id:string;businessDate:string;type:string;category:string|null
 type Review={id:string;transactionId:string;reason:string;status:string;businessDate:string;amount:number;rawText:string|null;category:string|null;vendor:string|null};
 type Category={code:string;name:string;group:string};
 type ImportItem={id:string;sourceType:string;sourceReference:string;status:string;recordCount:number;createdAt:string};
+type UploadRecord={sourceType:string;sourceId:string|null;businessDate:string|null;sender:string|null;fields:Record<string,unknown>;confidence:number;rawText:string|null;originalFileName:string|null};
+type UploadPreview={jobId:string;filename:string;checksum:string;recordCount:number;records:UploadRecord[]};
 type TxDetail=Record<string,unknown>&{auditHistory:unknown[]};
 type ApiFn=<T>(p:string,o?:RequestInit)=>Promise<T>;
 const money=new Intl.NumberFormat('en-IN',{style:'currency',currency:'INR',maximumFractionDigits:0});
@@ -42,29 +44,44 @@ function Metric({label,value}:{label:string;value?:number}){return <article clas
 function ManualEntry({api,onDone}:{api:ApiFn;onDone:(m:string)=>void}){const [text,setText]=useState('Paid Salman 6500 for vegetables');const [busy,setBusy]=useState(false);return <form className="manual" onSubmit={async e=>{e.preventDefault();setBusy(true);try{const r=await api<{message:string;status:string}>('/api/intake/manual-text',{method:'POST',body:JSON.stringify({text})});onDone(`${r.status}: ${r.message}`);setText('')}catch(e){onDone((e as Error).message)}finally{setBusy(false)}}}><input value={text} onChange={e=>setText(e.target.value)} placeholder="Paid Salman 6500 vegetables" required/><button className="primary" disabled={busy}>{busy?'Recording…':'Record'}</button></form>}
 function FileUpload({api,onDone}:{api:ApiFn;onDone:(m:string)=>void}) {
  const [file,setFile]=useState<File|null>(null);
- const [preview,setPreview]=useState<{jobId:string;recordCount:number;filename:string}|null>(null);
+ const [preview,setPreview]=useState<UploadPreview|null>(null);
+ const [busy,setBusy]=useState<'preview'|'confirm'|null>(null);
  const previewFile=async()=>{
   if(!file)return;
+  setBusy('preview');
   const fd=new FormData(); fd.append('file',file);
   try {
-   const result=await api<{jobId:string;recordCount:number;filename:string}>('/api/intake/uploads/preview',{method:'POST',body:fd});
+   const result=await api<UploadPreview>('/api/intake/uploads/preview',{method:'POST',body:fd});
    setPreview(result);
   } catch(e){onDone((e as Error).message);}
+  finally{setBusy(null)}
  };
  const confirmImport=async()=>{
   if(!preview)return;
+  setBusy('confirm');
   try {
-   const result=await api<{processed:number}>(`/api/intake/uploads/${preview.jobId}/confirm`,{method:'POST'});
-   onDone(`Imported ${result.processed} records`); setPreview(null); setFile(null);
+   const result=await api<{processed:number;results:{status:string}[]}>(`/api/intake/uploads/${preview.jobId}/confirm`,{method:'POST'});
+   const verified=result.results.filter(r=>r.status==='VERIFIED').length;
+   const review=result.results.filter(r=>r.status==='REVIEW_REQUIRED').length;
+   onDone(`Imported ${result.processed} records · ${verified} verified · ${review} need review`);
+   setPreview(null); setFile(null);
   } catch(e){onDone((e as Error).message);}
+  finally{setBusy(null)}
  };
  return <div className="upload">
-  <input type="file" accept=".xls,.xlsx,.csv,image/*" onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null)}}/>
-  <button className="ghost" disabled={!file} onClick={previewFile}>Preview</button>
-  {preview&&<>
-   <span>{preview.recordCount} candidate records</span>
-   <button className="primary" onClick={confirmImport}>Confirm import</button>
-  </>}
+  <div className="upload-controls">
+   <label className="file-picker"><span>{file?file.name:'Choose XLS, XLSX, CSV or image'}</span><input type="file" accept=".xls,.xlsx,.csv,image/*" onChange={e=>{setFile(e.target.files?.[0]||null);setPreview(null)}}/></label>
+   {file&&<span className="file-meta">{Math.max(1,Math.round(file.size/1024))} KB</span>}
+   <button className="ghost" type="button" disabled={!file||!!busy} onClick={previewFile}>{busy==='preview'?'Reading…':'Preview'}</button>
+  </div>
+  {preview&&<div className="upload-preview">
+   <div className="preview-head"><div><p className="eyebrow">IMPORT PREVIEW</p><h3>{preview.filename}</h3><p className="subtle">{preview.recordCount} candidate {preview.recordCount===1?'record':'records'} · Nothing is posted until you confirm.</p></div><button className="primary" type="button" disabled={!!busy||preview.recordCount===0} onClick={confirmImport}>{busy==='confirm'?'Importing…':'Confirm import'}</button></div>
+   {preview.records.length? <div className="preview-list">{preview.records.map((record,index)=><article className="preview-record" key={`${record.sourceId||record.sourceType}-${index}`}>
+    <div className="preview-record-top"><strong>Record {index+1}</strong><span className="source-tag">{pretty(record.sourceType)}</span><span className={`confidence ${record.confidence>=.85?'high':record.confidence>=.6?'medium':'low'}`}>{Math.round(record.confidence*100)}% confidence</span></div>
+    <div className="preview-facts">{record.businessDate&&<span><b>Date</b>{record.businessDate}</span>}{record.sender&&<span><b>Sender</b>{record.sender}</span>}{Object.entries(record.fields).map(([key,value])=><span key={key}><b>{pretty(key)}</b>{value==null||value===''?'—':String(value)}</span>)}</div>
+    {record.rawText&&<p className="raw-preview">{record.rawText}</p>}
+   </article>)}</div>:<div className="empty">No candidate records were extracted from this file.</div>}
+  </div>}
  </div>;
 }
 
