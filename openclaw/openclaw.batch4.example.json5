@@ -1,8 +1,7 @@
 {
-  // Batch 4: Meta WhatsApp Cloud API remains at Spring. Spring invokes only these restaurant tools through OpenClaw Gateway.
+  // Batch 4: OpenClaw owns a dedicated WhatsApp DM account. Groups remain disabled until Batch 5.
   gateway: {
     mode: "local",
-    port: 18789,
     bind: "loopback",
     auth: {
       mode: "token",
@@ -15,6 +14,26 @@
       },
     },
   },
+
+  session: {
+    // Never share conversational context between different WhatsApp senders.
+    dmScope: "per-channel-peer",
+  },
+
+  channels: {
+    whatsapp: {
+      enabled: true,
+      // Unknown DM senders receive a one-time pairing code and are ignored until approved.
+      dmPolicy: "pairing",
+      // Batch 4 is DM-only. Group routing is introduced and tested separately in Batch 5.
+      groupPolicy: "disabled",
+      textChunkLimit: 4000,
+      mediaMaxMb: 20,
+      sendReadReceipts: true,
+      replyToMode: "first",
+    },
+  },
+
   models: {
     providers: {
       ollama: {
@@ -51,14 +70,17 @@
       },
     },
   },
+
   agents: {
     defaults: {
       workspace: "./openclaw/workspace",
       model: { primary: "ollama/qwen3.5:9b" },
+      skills: [],
     },
   },
+
   tools: {
-    // /tools/invoke is filtered through normal tool policy. Keep this Gateway dedicated to the restaurant surface.
+    // This restaurant agent has no shell, database, browser, automation, or arbitrary filesystem tool.
     allow: [
       "restaurant_route_text",
       "restaurant_ingest_text",
@@ -67,19 +89,30 @@
       "restaurant_confirm_spreadsheet",
       "restaurant_get_sales",
     ],
+    deny: [
+      "group:automation",
+      "group:runtime",
+      "group:fs",
+      "sessions_spawn",
+      "sessions_send",
+    ],
+    fs: { workspaceOnly: true },
+    elevated: { enabled: false },
+    agentToAgent: { enabled: false },
   },
+
   plugins: {
     entries: {
       "bombay-restaurant-tools": {
         enabled: true,
         config: {
           backendBaseUrl: "${OPENCLAW_BACKEND_BASE_URL}",
-          ollamaBaseUrl: "${OLLAMA_BASE_URL:-http://127.0.0.1:11434}",
-          routerModel: "${OLLAMA_ROUTER_MODEL:-qwen3.5:9b}",
-          textModel: "${OLLAMA_TEXT_MODEL:-qwen3.5:9b}",
-          visionModel: "${OLLAMA_VISION_MODEL:-qwen3.5:9b}",
-          visionFallback: "${OLLAMA_VISION_FALLBACK:-gemma4:12b}",
-          responseModel: "${OLLAMA_RESPONSE_MODEL:-qwen3.5:9b}",
+          ollamaBaseUrl: "${OLLAMA_BASE_URL}",
+          routerModel: "qwen3.5:9b",
+          textModel: "qwen3.5:9b",
+          visionModel: "qwen3.5:9b",
+          visionFallback: "gemma4:12b",
+          responseModel: "qwen3.5:9b",
         },
       },
     },
